@@ -1,0 +1,51 @@
+version: 2
+project_name: tlaude-code
+
+builds:
+  - main: ./cmd/tlaude-code/
+    binary: tlaude-code
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    format: tar.gz
+    files:
+      - README.md
+      - LICENSE
+
+brews:
+  - repository:
+      owner: tetexu
+      name: homebrew-tlaude-code
+    directory: Formula
+    homepage: "https://github.com/tetexu/tlaude-code"
+    description: "AI coding CLI with multi-agent orchestration"
+    license: "MIT"
+    test: |
+      system "#{bin}/tlaude-code --version"
+
+release:
+  prerelease: auto
+  header: |
+    ## Tlaude Code {{ .Version }}
+
+    ### Install
+    ```bash
+    brew install tetexu/tlaude-code/tlaude-code
+    ```
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
