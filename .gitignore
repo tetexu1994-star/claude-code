@@ -1,6 +1,6 @@
 # Binaries
 claude-code
-tlaude-code
+/tlaude-code
 *.exe
 *.dll
 *.so
