@@ -3,10 +3,13 @@ package bash
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/tetexu/tlaude-code/internal/tool"
 )
 
 type Result struct {
@@ -70,4 +73,73 @@ func (t *Tool) Execute(ctx context.Context, command string) (*Result, error) {
 
 func (t *Tool) SetAllowedCommands(cmds []string) {
 	t.AllowedCmds = cmds
+}
+
+// --- Tool interface adapter ---
+
+// BashToolName is the canonical name for the bash tool.
+const BashToolName = "bash"
+
+// BashTool wraps Tool to implement the tool.Tool interface.
+type BashTool struct {
+	inner *Tool
+}
+
+// NewBashTool returns a BashTool that implements tool.Tool.
+func NewBashTool() *BashTool {
+	return &BashTool{inner: NewTool()}
+}
+
+// Name returns the tool's canonical name.
+func (bt *BashTool) Name() string { return BashToolName }
+
+// Description returns a human-readable description for the LLM.
+func (bt *BashTool) Description() string {
+	return "Execute a shell command in a sandboxed environment. Returns stdout, stderr, and exit code."
+}
+
+// ToolDefinition returns the LLM-facing tool definition with JSON Schema.
+func (bt *BashTool) ToolDefinition() tool.ToolDefinition {
+	schema := json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "description": "The shell command to execute"
+    }
+  },
+  "required": ["command"]
+}`)
+	return tool.ToolDefinition{
+		Name:        BashToolName,
+		Description: bt.Description(),
+		InputSchema: schema,
+	}
+}
+
+// IsEnabled returns whether the tool is currently enabled.
+func (bt *BashTool) IsEnabled() bool { return bt.inner.Enabled }
+
+// IsConcurrencySafe returns false — bash execution has side effects.
+func (bt *BashTool) IsConcurrencySafe() bool { return false }
+
+// Execute runs the bash tool from JSON input per the tool.Tool interface.
+func (bt *BashTool) Execute(ctx context.Context, input json.RawMessage, toolCtx *tool.ToolContext) (*tool.ToolResult, error) {
+	var params struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &tool.ToolResult{IsError: true, Content: fmt.Sprintf("invalid input: %v", err)}, nil
+	}
+	result, err := bt.inner.Execute(ctx, params.Command)
+	if err != nil {
+		return &tool.ToolResult{IsError: true, Content: err.Error()}, nil
+	}
+	content := result.Stdout
+	if result.Stderr != "" {
+		content += "\n[stderr]\n" + result.Stderr
+	}
+	return &tool.ToolResult{
+		Content: content,
+	}, nil
 }
