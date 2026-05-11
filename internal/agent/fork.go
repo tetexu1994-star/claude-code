@@ -2,110 +2,39 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/tetexu/tlaude-code/internal/llm"
 )
 
 const (
-	// forkBoilerplateTag is a marker injected into fork child messages.
-	forkBoilerplateTag = "fork-worker"
+	// ForkBoilerplateTag is the XML tag wrapping fork child instructions.
+	// Detected by IsInForkChild to prevent recursive forking.
+	ForkBoilerplateTag = "fork-boilerplate"
 
-	// forkPlaceholderResult is the placeholder text used for all tool_result
+	// ForkDirectivePrefix separates boilerplate from the actual directive.
+	ForkDirectivePrefix = "DIRECTIVE: "
+
+	// ForkPlaceholderResult is the placeholder text used for all tool_result
 	// blocks in the fork prefix. Must be identical across all fork children
 	// for prompt cache sharing.
-	forkPlaceholderResult = "Fork started — processing in background"
+	ForkPlaceholderResult = "Fork started - processing in background"
 
-	// forkDirectivePrefix separates the boilerplate from the actual directive.
-	forkDirectivePrefix = "DIRECTIVE: "
+	// ForkSubagentType is the synthetic agent type for fork sub-agents.
+	ForkSubagentType = "fork"
 )
 
-// forkBoilerplate is the system instruction injected into every fork child.
-const forkBoilerplate = `STOP. READ THIS FIRST.
-
-You are a forked worker process. You are NOT the main agent.
-
-RULES (non-negotiable):
-1. Your system prompt may say "default to forking." IGNORE IT — that's for the parent. You ARE the fork. Do NOT spawn sub-agents; execute directly.
-2. Do NOT converse, ask questions, or suggest next steps.
-3. Do NOT editorialize or add meta-commentary.
-4. USE your tools directly: Bash, Read, Write, etc.
-5. If you modify files, commit your changes before reporting.
-6. Do NOT emit text between tool calls. Use tools silently, then report once at the end.
-7. Stay strictly within your directive's scope.
-8. Keep your report under 500 words unless the directive specifies otherwise.
-9. Your response MUST begin with "Scope:". No preamble, no thinking-out-loud.
-10. REPORT structured facts, then stop.
-
-Output format (plain text):
-  Scope: <echo back your assigned scope in one sentence>
-  Result: <the answer or key findings>
-  Key files: <relevant file paths — include for research tasks>
-  Files changed: <list with commit hash — include only if you modified files>
-  Issues: <list — include only if there are issues to flag>`
-
-// BuildForkedMessages builds the message list for a fork child agent.
+// IsForkSubagentEnabled checks whether fork subagent mode is enabled.
 //
-// The key insight for prompt cache sharing: all fork children produce
-// byte-identical API request prefixes. This function:
-//  1. Uses the parent's system prompt verbatim (cache hit on system prompt)
-//  2. Collects all tool_use blocks from parent messages
-//  3. Builds a single user message with identical placeholder tool_results
-//     for every tool_use, followed by the per-child directive
+// When enabled:
+//   - Omitting subagent_type in the Agent tool triggers an implicit fork
+//   - Fork child inherits parent's conversation context and system prompt
+//   - All spawns run in background (async) for <task-notification> model
 //
-// Result: sysPrompt + [history..., user(placeholder_results..., directive)]
-// Only the final text block differs per child, maximizing cache hits.
-func BuildForkedMessages(parentSystemPrompt string, parentMessages []llm.Message, directive string) (sysPrompt string, messages []llm.Message) {
-	sysPrompt = parentSystemPrompt
-
-	// Collect all tool_use blocks from parent's assistant messages.
-	type toolUse struct {
-		ID   string
-		Name string
-	}
-	var toolUses []toolUse
-	for _, msg := range parentMessages {
-		if msg.Role == "assistant" {
-			for _, tc := range msg.ToolCalls {
-				toolUses = append(toolUses, toolUse{ID: tc.ID, Name: tc.Name})
-			}
-		}
-	}
-
-	if len(toolUses) == 0 {
-		// No tool_use blocks: include parent messages with directive appended.
-		messages = append(messages, parentMessages...)
-		messages = append(messages, llm.Message{
-			Role:    "user",
-			Content: buildForkChildMessage(directive),
-		})
-		return
-	}
-
-	// Build a single user message: all placeholder tool_results + directive.
-	var contentParts []string
-	for _, tu := range toolUses {
-		contentParts = append(contentParts,
-			fmt.Sprintf("[tool_result id=%s] %s", tu.ID, forkPlaceholderResult))
-	}
-	contentParts = append(contentParts, buildForkChildMessage(directive))
-
-	fullContent := strings.Join(contentParts, "\n\n")
-
-	messages = append(messages, parentMessages...)
-	messages = append(messages, llm.Message{
-		Role:    "user",
-		Content: fullContent,
-	})
-	return
-}
-
-// buildForkChildMessage constructs the directive message for a fork child.
-func buildForkChildMessage(directive string) string {
-	return fmt.Sprintf("<%s>\n%s\n</%s>\n\n%s%s",
-		forkBoilerplateTag, forkBoilerplate,
-		forkBoilerplateTag,
-		forkDirectivePrefix, directive)
+// Mutually exclusive with coordinator mode.
+func IsForkSubagentEnabled() bool {
+	return os.Getenv("TLAUDE_CODE_FORK_SUBAGENT") == "1"
 }
 
 // IsInForkChild checks whether the given messages indicate we are already
@@ -115,9 +44,108 @@ func buildForkChildMessage(directive string) string {
 // BuildForkedMessages.
 func IsInForkChild(messages []llm.Message) bool {
 	for _, m := range messages {
-		if m.Role == "user" && strings.Contains(m.Content, forkBoilerplateTag) {
+		if m.Role == "user" && strings.Contains(m.Content, "<"+ForkBoilerplateTag+">") {
 			return true
 		}
 	}
 	return false
+}
+
+// BuildForkedMessages builds the conversation context for a fork child.
+//
+// For prompt cache sharing, all fork children must produce byte-identical
+// API request prefixes. This function:
+//  1. Clones the assistant message with all tool_use blocks
+//  2. Builds a single user message with identical placeholder tool_results
+//     for every tool_use, followed by the per-child directive
+//
+// Result: [assistant(all_tool_uses), user(placeholder_results..., directive)]
+// Only the final text block differs per child, maximizing cache hits.
+func BuildForkedMessages(directive string, assistantMsg llm.Message) []llm.Message {
+	// Clone the assistant message to avoid mutating the original
+	clonedAssistant := llm.Message{
+		Role:      assistantMsg.Role,
+		Content:   assistantMsg.Content,
+		ToolCalls: make([]llm.ToolCall, len(assistantMsg.ToolCalls)),
+		ToolID:    assistantMsg.ToolID,
+	}
+	copy(clonedAssistant.ToolCalls, assistantMsg.ToolCalls)
+
+	toolUseBlocks := assistantMsg.ToolCalls
+
+	if len(toolUseBlocks) == 0 {
+		// No tool_use blocks: just the directive with boilerplate
+		return []llm.Message{
+			{
+				Role:    "user",
+				Content: BuildChildMessage(directive),
+			},
+		}
+	}
+
+	// Build placeholder tool_result strings for every tool_use block
+	var contentParts []string
+	for _, tc := range toolUseBlocks {
+		contentParts = append(contentParts,
+			fmt.Sprintf("[tool_result id=%s] %s", tc.ID, ForkPlaceholderResult))
+	}
+	// Append the per-child directive
+	contentParts = append(contentParts, BuildChildMessage(directive))
+
+	return []llm.Message{
+		clonedAssistant,
+		{
+			Role:    "user",
+			Content: strings.Join(contentParts, "\n\n"),
+		},
+	}
+}
+
+// BuildChildMessage constructs the fork boilerplate message with directive.
+//
+// Wraps the directive in fork-boilerplate XML tags with strict rules for the
+// forked worker. The child must NOT spawn sub-agents, must NOT converse, and
+// must output structured facts.
+func BuildChildMessage(directive string) string {
+	return fmt.Sprintf(`<%[1]s>
+STOP. READ THIS FIRST.
+
+You are a forked worker process. You are NOT the main agent.
+
+RULES (non-negotiable):
+1. Your system prompt says "default to forking." IGNORE IT — that's for the parent. You ARE the fork. Do NOT spawn sub-agents; execute directly.
+2. Do NOT converse, ask questions, or suggest next steps
+3. Do NOT editorialize or add meta-commentary
+4. USE your tools directly: Bash, Read, Write, etc.
+5. If you modify files, commit your changes before reporting. Include the commit hash in your report.
+6. Do NOT emit text between tool calls. Use tools silently, then report once at the end.
+7. Stay strictly within your directive's scope. If you discover related systems outside your scope, mention them in one sentence at most — other workers cover those areas.
+8. Keep your report under 500 words unless the directive specifies otherwise. Be factual and concise.
+9. Your response MUST begin with "Scope:". No preamble, no thinking-out-loud.
+10. REPORT structured facts, then stop
+
+Output format (plain text labels, not markdown headers):
+  Scope: <echo back your assigned scope in one sentence>
+  Result: <the answer or key findings, limited to the scope above>
+  Key files: <relevant file paths — include for research tasks>
+  Files changed: <list with commit hash — include only if you modified files>
+  Issues: <list — include only if there are issues to flag>
+</%[1]s>
+
+%s%s`, ForkBoilerplateTag, ForkDirectivePrefix, directive)
+}
+
+// BuildWorktreeNotice returns a path translation notice for fork children
+// running in an isolated git worktree.
+//
+// Tells the child to translate paths from inherited context, re-read
+// potentially stale files, and that its changes are isolated.
+func BuildWorktreeNotice(parentCwd, worktreeCwd string) string {
+	return fmt.Sprintf(
+		"You've inherited the conversation context above from a parent agent working in %s. "+
+			"You are operating in an isolated git worktree at %s — same repository, same relative file structure, separate working copy. "+
+			"Paths in the inherited context refer to the parent's working directory; translate them to your worktree root. "+
+			"Re-read files before editing if the parent may have modified them since they appear in the context. "+
+			"Your changes stay in this worktree and will not affect the parent's files.",
+		parentCwd, worktreeCwd)
 }

@@ -63,7 +63,99 @@ var (
 
 	moaDetailStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243"))
+	// Welcome screen styles.
+	welcomeContainerStyle = lipgloss.NewStyle().
+		Width(60).
+		Padding(2, 3).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63"))
+
+	welcomeTitleStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("63"))
+
+	welcomeTipStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+
+	welcomeKeyStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39"))
+
+	// Coordinator panel styles.
+	coordinatorBoxStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(0, 1)
+
+	coordinatorHeaderStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("63"))
+
+	coordinatorRunningStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39"))
+
+	coordinatorDoneStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("42"))
+
+	coordinatorFailedStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196"))
+
+	// Markdown rendering styles.
+	mdH1Style = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("63"))
+
+	mdH2Style = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("69"))
+
+	mdH3Style = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("75"))
+
+	mdInlineCodeStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("236")).
+		Foreground(lipgloss.Color("222"))
+
+	mdBoldStyle = lipgloss.NewStyle().
+		Bold(true)
+
+	// Enhanced status bar styles.
+	statusBarEnhancedStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("63")).
+		Foreground(lipgloss.Color("15")).
+		Padding(0, 1)
+
+	statusBarSepStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("63")).
+		Foreground(lipgloss.Color("111"))
+
+	// Spinner style.
+	spinnerFrameStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("63"))
+
+	spinnerTextStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
 )
+
+// Version is the package version, set at build time or defaulting to "dev".
+var Version = "dev"
+
+// Spinner is a simple text-based activity indicator.
+type Spinner struct {
+	frames []string
+	index  int
+	Text   string
+}
+
+// AgentTaskState describes a single sub-agent in the coordinator panel.
+type AgentTaskState struct {
+	ID          string
+	Name        string
+	Description string
+	Status      string // "running", "completed", "failed"
+	Elapsed     string
+	Color       string
+}
 
 // Model is the Bubble Tea model for the TUI.
 type Model struct {
@@ -83,7 +175,14 @@ type Model struct {
 	streamCh  <-chan llm.Chunk
 	quitting  bool
 	statusMsg string
-	showHelp  bool
+	showHelp       bool
+	welcomeVisible bool
+
+	// Coordinator panel.
+	coordinatorTasks []AgentTaskState
+
+	// Spinner.
+	spinner *Spinner
 
 	// Approval flow.
 	pendingApproval *ApprovalRequest
@@ -204,6 +303,7 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 		swarmStore:      swarmStore,
 		ctx:             ctx,
 		cancel:          cancel,
+		welcomeVisible:  true,
 	}
 	if m.compactManager == nil {
 		compactCfg := compact.Config{
@@ -244,6 +344,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.rebuildChat())
 
 	case tea.KeyMsg:
+		// Dismiss welcome screen on any key press.
+		if m.welcomeVisible {
+			m.welcomeVisible = false
+			if msg.String() == "ctrl+c" || msg.String() == "esc" {
+				m.quitting = true
+				m.cancel()
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			if m.diffViewActive {
@@ -313,16 +424,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			m.streamErr = msg.Error
 			m.streaming = false
+			m.spinner = nil
 			m.statusMsg = fmt.Sprintf("Error: %v", msg.Error)
 		} else if msg.Done {
 			if len(msg.ToolCalls) > 0 {
 				m.streamBuf.Reset()
 				m.streaming = false
+				m.spinner = nil
 				cmds = append(cmds, m.handleToolCalls(msg.ToolCalls))
 			} else {
 				content := m.streamBuf.String()
 				m.streamBuf.Reset()
 				m.streaming = false
+				m.spinner = nil
 				m.messages = append(m.messages, llm.Message{Role: "assistant", Content: content})
 				m.recordCost(content)
 				m.statusMsg = m.buildStatusMsg()
@@ -344,9 +458,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			m.streamErr = msg.Error
 			m.streaming = false
+			m.spinner = nil
 			m.statusMsg = fmt.Sprintf("MoA Error: %v", msg.Error)
 		} else if msg.Result != nil {
 			m.streaming = false
+			m.spinner = nil
 			m.moaResult = msg.Result
 			m.moaResults = msg.Result.Responses
 			m.messages = append(m.messages, llm.Message{Role: "assistant", Content: msg.Result.FinalContent})
@@ -379,7 +495,23 @@ func (m Model) View() string {
 		return m.renderHelp()
 	}
 
+	// Welcome screen: shown before any messages are exchanged.
+	if m.showWelcome() && !m.streaming {
+		return m.welcomeView()
+	}
+
 	chatContent := m.chatView.View()
+
+	// Coordinator panel above chat.
+	if len(m.coordinatorTasks) > 0 {
+		coord := m.coordinatorView()
+		chatContent = coord + "\n" + chatContent
+	}
+
+	// Spinner below chat (during streaming / tool execution).
+	if m.spinner != nil {
+		chatContent = chatContent + "\n  " + m.spinner.View()
+	}
 
 	inputStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -387,11 +519,7 @@ func (m Model) View() string {
 		Width(m.width - 2)
 	inputView := inputStyle.Render(m.input.View())
 
-	statusText := m.statusMsg
-	if m.streaming {
-		statusText += " ●"
-	}
-	statusBar := statusBarStyle.Width(m.width).Render(statusText)
+	statusBar := m.renderStatusBarEnhanced()
 
 	// Full-screen diff view
 	if m.diffViewActive {
@@ -474,6 +602,7 @@ func (m *Model) sendMessage(input string) tea.Cmd {
 		m.moaExecuting = true
 		m.streaming = true
 		m.streamBuf.Reset()
+		m.spinner = NewSpinner("Thinking...")
 		m.statusMsg = fmt.Sprintf("MoA: calling %d providers...", m.moaProviderCount())
 
 		// Copy cfg values to avoid data race from the tea.Cmd goroutine.
@@ -500,6 +629,7 @@ func (m *Model) sendMessage(input string) tea.Cmd {
 	// Standard single-provider streaming mode.
 	m.streaming = true
 	m.streamBuf.Reset()
+	m.spinner = NewSpinner("Thinking...")
 	m.statusMsg = m.buildStatusMsg() + " | thinking..."
 
 	// Copy cfg values to avoid data race from the tea.Cmd goroutine.
@@ -1632,6 +1762,7 @@ func (m *Model) sendToolResultsToModel() tea.Cmd {
 		m.streaming = true
 		m.streamBuf.Reset()
 		m.streamErr = nil
+		m.spinner = NewSpinner("Running tool...")
 		return readChunk(ch)
 	}
 }
@@ -1797,4 +1928,317 @@ func (m *Model) SaveSession() {
 // Quitting returns true if the user requested to quit.
 func (m Model) Quitting() bool {
 	return m.quitting
+}
+
+// ---------------------------------------------------------------------------
+// Spinner
+// ---------------------------------------------------------------------------
+
+var defaultSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// NewSpinner creates a new spinner with the given text.
+func NewSpinner(text string) *Spinner {
+	return &Spinner{
+		frames: defaultSpinnerFrames,
+		Text:   text,
+	}
+}
+
+// Next advances the spinner to the next frame and returns the frame character.
+func (s *Spinner) Next() string {
+	frame := s.frames[s.index]
+	s.index = (s.index + 1) % len(s.frames)
+	return frame
+}
+
+// View renders the spinner frame and text as a single line.
+func (s *Spinner) View() string {
+	if s == nil {
+		return ""
+	}
+	frame := s.frames[s.index]
+	s.index = (s.index + 1) % len(s.frames)
+	return spinnerFrameStyle.Render(frame) + " " + spinnerTextStyle.Render(s.Text)
+}
+
+// ---------------------------------------------------------------------------
+// Welcome screen
+// ---------------------------------------------------------------------------
+
+// showWelcome returns true when the welcome screen should be displayed.
+func (m Model) showWelcome() bool {
+	return m.welcomeVisible && len(m.messages) == 0
+}
+
+// welcomeView renders the startup welcome screen.
+func (m Model) welcomeView() string {
+	title := welcomeTitleStyle.Render("Tlaude Code") + " " + welcomeTitleStyle.Render(Version)
+	tagline := welcomeTipStyle.Render("A production-grade CLI tool with multi-provider LLM support")
+
+	var sb strings.Builder
+	sb.WriteString(title)
+	sb.WriteString("\n")
+	sb.WriteString(tagline)
+	sb.WriteString("\n\n")
+
+	tips := []struct {
+		key, desc string
+	}{
+		{"/help", "Show available commands"},
+		{"/config", "Edit configuration"},
+		{"/clear", "Clear chat history"},
+		{"/save", "Save session to disk"},
+		{"/cost", "Show cost report"},
+		{"/plan create", "Create a new plan"},
+		{"/agent list", "List available agents"},
+		{"Ctrl+C", "Exit"},
+	}
+
+	for _, tip := range tips {
+		sb.WriteString("  ")
+		sb.WriteString(welcomeKeyStyle.Render(tip.key))
+		sb.WriteString("  ")
+		sb.WriteString(welcomeTipStyle.Render(tip.desc))
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(welcomeTipStyle.Render("Type a message or command to begin..."))
+
+	return lipgloss.Place(
+		m.width, m.height-4,
+		lipgloss.Center, lipgloss.Center,
+		welcomeContainerStyle.Render(sb.String()),
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Coordinator panel
+// ---------------------------------------------------------------------------
+
+// coordinatorView renders the sub-agent status panel above the chat.
+func (m Model) coordinatorView() string {
+	if len(m.coordinatorTasks) == 0 {
+		return ""
+	}
+
+	width := m.width
+	if width < 40 {
+		width = 40
+	}
+	innerW := width - 4
+	if innerW < 1 {
+		innerW = 1
+	}
+
+	var sb strings.Builder
+
+	// Header
+	headerText := " Agents "
+	padTotal := innerW - len(headerText)
+	if padTotal < 0 {
+		padTotal = 0
+	}
+	leftPad := padTotal / 2
+	rightPad := padTotal - leftPad
+	sb.WriteString(coordinatorHeaderStyle.Render("┌" + strings.Repeat("─", leftPad) + headerText + strings.Repeat("─", rightPad) + "┐"))
+	sb.WriteString("\n")
+
+	// Agent rows
+	for _, t := range m.coordinatorTasks {
+		statusIcon := "●"
+		var style lipgloss.Style
+		switch t.Status {
+		case "running":
+			style = coordinatorRunningStyle
+			statusIcon = "●"
+		case "completed":
+			style = coordinatorDoneStyle
+			statusIcon = "✓"
+		case "failed":
+			style = coordinatorFailedStyle
+			statusIcon = "✗"
+		default:
+			style = coordinatorHeaderStyle
+			statusIcon = "○"
+		}
+
+		row := fmt.Sprintf(" %s %s (%s) - %s",
+			style.Render(statusIcon),
+			style.Render(t.Name),
+			t.Status,
+			t.Elapsed,
+		)
+		if t.Description != "" {
+			row += " — " + t.Description
+		}
+		// Truncate to fit
+		if len(row) > innerW+2 {
+			row = row[:innerW+1] + "…"
+		}
+		sb.WriteString(row)
+		sb.WriteString("\n")
+	}
+
+	// Footer
+	sb.WriteString(coordinatorHeaderStyle.Render("└" + strings.Repeat("─", innerW) + "┘"))
+
+	return coordinatorBoxStyle.Width(width).Render(sb.String())
+}
+
+// ---------------------------------------------------------------------------
+// Markdown rendering (lightweight, lipgloss-based)
+// ---------------------------------------------------------------------------
+
+// renderMarkdown renders markdown text with lipgloss styling.
+func renderMarkdown(text string, width int) string {
+	var sb strings.Builder
+	inCodeBlock := false
+	var codeLang string
+
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		// Code block fences
+		if strings.HasPrefix(line, "```") {
+			if !inCodeBlock {
+				codeLang = strings.TrimPrefix(line, "```")
+				codeLang = strings.TrimSpace(codeLang)
+				if codeLang != "" {
+					sb.WriteString(codeHeaderStyle.Render("[" + codeLang + "]"))
+					sb.WriteByte('\n')
+				}
+			}
+			inCodeBlock = !inCodeBlock
+			continue
+		}
+
+		if inCodeBlock {
+			sb.WriteString(codeBlockStyle.Render(line))
+			sb.WriteByte('\n')
+			continue
+		}
+
+		// Headers
+		if strings.HasPrefix(line, "### ") {
+			sb.WriteString(mdH3Style.Render(strings.TrimPrefix(line, "### ")))
+			sb.WriteByte('\n')
+			continue
+		}
+		if strings.HasPrefix(line, "## ") {
+			sb.WriteString(mdH2Style.Render(strings.TrimPrefix(line, "## ")))
+			sb.WriteByte('\n')
+			continue
+		}
+		if strings.HasPrefix(line, "# ") {
+			sb.WriteString(mdH1Style.Render(strings.TrimPrefix(line, "# ")))
+			sb.WriteByte('\n')
+			continue
+		}
+
+		// Unordered lists
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			content := line[2:]
+			sb.WriteString("  • ")
+			sb.WriteString(renderMarkdownInline(content))
+			sb.WriteByte('\n')
+			continue
+		}
+
+		// Ordered lists (1. 2. etc)
+		if len(line) > 2 && line[0] >= '1' && line[0] <= '9' && line[1] == '.' && line[2] == ' ' {
+			sb.WriteString("  ")
+			sb.WriteString(line[:strings.IndexByte(line, ' ')+1])
+			sb.WriteString(renderMarkdownInline(line[strings.IndexByte(line, ' ')+1:]))
+			sb.WriteByte('\n')
+			continue
+		}
+
+		// Bold text (**text**)
+		rendered := renderMarkdownInline(line)
+
+		sb.WriteString(rendered)
+		if i < len(lines)-1 {
+			sb.WriteByte('\n')
+		}
+	}
+
+	return sb.String()
+}
+
+// renderMarkdownInline handles inline markdown: `code`, **bold**.
+func renderMarkdownInline(text string) string {
+	var result strings.Builder
+	i := 0
+	for i < len(text) {
+		// Inline code
+		if i+1 < len(text) && text[i] == '`' {
+			end := strings.IndexByte(text[i+1:], '`')
+			if end != -1 {
+				code := text[i+1 : i+1+end]
+				result.WriteString(mdInlineCodeStyle.Render(code))
+				i += end + 2
+				continue
+			}
+		}
+		// Bold
+		if i+1 < len(text) && text[i] == '*' && text[i+1] == '*' {
+			end := strings.Index(text[i+2:], "**")
+			if end != -1 {
+				bold := text[i+2 : i+2+end]
+				result.WriteString(mdBoldStyle.Render(bold))
+				i += end + 4
+				continue
+			}
+		}
+		result.WriteByte(text[i])
+		i++
+	}
+	return result.String()
+}
+
+// ---------------------------------------------------------------------------
+// Enhanced status bar
+// ---------------------------------------------------------------------------
+
+// renderStatusBarEnhanced returns the enhanced status bar line.
+func (m Model) renderStatusBarEnhanced() string {
+	totalTokens := 0
+	totalCost := 0.0
+	if m.costTracker != nil {
+		stats := m.costTracker.GetAllStats()
+		for _, s := range stats {
+			totalTokens += s.TotalInputTokens + s.TotalOutputTokens
+		}
+		totalCost = m.costTracker.TotalCost()
+	}
+
+	mode := "normal"
+	if m.moaEnabled {
+		mode = "moa:" + m.cfg.MoA.Mode
+	}
+	if m.planManager != nil && m.planManager.IsInPlanMode() {
+		mode = "plan"
+	}
+
+	sep := statusBarSepStyle.Render(" │ ")
+	bar := statusBarEnhancedStyle.Render("▌ ") +
+		statusBarEnhancedStyle.Render(m.provider.Name()+":"+m.cfg.Model) +
+		sep +
+		statusBarEnhancedStyle.Render("mode:"+mode) +
+		sep +
+		statusBarEnhancedStyle.Render(fmt.Sprintf("tokens: %s", formatTokens(totalTokens))) +
+		sep +
+		statusBarEnhancedStyle.Render(fmt.Sprintf("cost: $%.2f", totalCost))
+
+	return statusBarEnhancedStyle.Width(m.width).Render(bar)
+}
+
+func formatTokens(n int) string {
+	if n >= 1000000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1e6)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%d,%03d", n/1000, n%1000)
+	}
+	return fmt.Sprintf("%d", n)
 }
