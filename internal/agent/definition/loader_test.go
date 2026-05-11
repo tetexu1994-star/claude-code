@@ -14,15 +14,15 @@ func TestLoadAgentsDir_NoAgentsDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.ActiveAgents) < 4 {
-		t.Errorf("expected at least 4 built-in agents, got %d", len(result.ActiveAgents))
+	if len(result.ActiveAgents) < 5 {
+		t.Errorf("expected at least 5 built-in agents, got %d", len(result.ActiveAgents))
 	}
 	// Verify built-in types present.
 	types := make(map[string]bool)
 	for _, a := range result.ActiveAgents {
 		types[a.AgentType] = true
 	}
-	for _, want := range []string{"general-purpose", "cli-guide", "explore", "plan"} {
+	for _, want := range []string{"general-purpose", "explore", "plan", "verification", "guide"} {
 		if !types[want] {
 			t.Errorf("expected built-in agent %q not found", want)
 		}
@@ -58,8 +58,8 @@ You are a custom agent from the project directory.
 	}
 
 	// Should have built-ins + custom.
-	if len(result.ActiveAgents) < 5 {
-		t.Errorf("expected at least 5 agents (4 built-in + 1 custom), got %d", len(result.ActiveAgents))
+	if len(result.ActiveAgents) < 6 {
+		t.Errorf("expected at least 6 agents (5 built-in + 1 custom), got %d", len(result.ActiveAgents))
 	}
 
 	// Verify custom agent is present.

@@ -69,8 +69,10 @@ type AgentDefinition struct {
 	Effort          *EffortValue         `yaml:"effort" json:"effort"`
 	PermissionMode  *string              `yaml:"permission_mode" json:"permission_mode"` // "bubble", "bypassPermissions", etc.
 	MaxTurns        *int                 `yaml:"max_turns" json:"max_turns"`
-	Background      bool                 `yaml:"background" json:"background"`
-	InitialPrompt   string               `yaml:"initial_prompt" json:"initial_prompt"`
+	Background             bool                 `yaml:"background" json:"background"`
+	OmitClaudeMd           bool                 `yaml:"omit_claude_md" json:"omit_claude_md"`
+	InitialPrompt          string               `yaml:"initial_prompt" json:"initial_prompt"`
+	CriticalSystemReminder string               `yaml:"critical_system_reminder" json:"critical_system_reminder"`
 	Memory          *MemoryScope         `yaml:"memory" json:"memory"`
 	Isolation       string               `yaml:"isolation" json:"isolation"` // "worktree"
 	Source          Source               `yaml:"source" json:"source"`
