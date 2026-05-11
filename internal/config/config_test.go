@@ -222,6 +222,16 @@ func TestProbeConnectivity(t *testing.T) {
 	}
 }
 
+func TestDefaultMemoryConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	if !cfg.Memory.Enabled {
+		t.Error("Memory.Enabled should default to true")
+	}
+	if cfg.Memory.BaseDir != "" {
+		t.Errorf("Memory.BaseDir should default to empty, got %q", cfg.Memory.BaseDir)
+	}
+}
+
 func TestProviderEnvVars(t *testing.T) {
 	// Verify all expected providers are mapped
 	expected := []string{"anthropic", "openai", "deepseek", "openrouter", "siliconflow", "tongyi", "zhipu"}

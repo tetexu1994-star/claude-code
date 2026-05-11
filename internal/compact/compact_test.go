@@ -125,14 +125,14 @@ func TestMicroCompactKeepsRecent(t *testing.T) {
 func TestNeedsCompact(t *testing.T) {
 	// Create many large messages to exceed threshold.
 	var messages []llm.Message
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 200; i++ {
 		messages = append(messages, llm.Message{
 			Role:    "user",
 			Content: strings.Repeat("this is a long message to consume tokens ", 100),
 		})
 	}
-	// Should trigger for a small model.
-	if !NeedsCompact(messages, "claude-haiku-4", 40000) {
+	// Should trigger for gpt-3.5-turbo (16k context).
+	if !NeedsCompact(messages, "gpt-3.5-turbo", 40000) {
 		t.Error("NeedsCompact should return true for token-heavy messages with small model")
 	}
 }

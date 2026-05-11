@@ -33,6 +33,9 @@ const clearedToolResult = "[tool result cleared]"
 // the most recent keepRecent results per tool type. This is lightweight
 // garbage collection that runs after each API response.
 func MicroCompact(messages []llm.Message, keepRecent int) []llm.Message {
+	if messages == nil {
+		return nil
+	}
 	if keepRecent <= 0 {
 		keepRecent = 3
 	}

@@ -129,6 +129,9 @@ type Config struct {
 
 	// Context compaction.
 	Compact CompactConfig `yaml:"compact" json:"compact"`
+
+	// Memory system.
+	Memory MemoryConfig `yaml:"memory" json:"memory"`
 }
 
 // CompactConfig holds context compaction settings.
@@ -136,6 +139,12 @@ type CompactConfig struct {
 	Enabled     bool `yaml:"enabled" json:"enabled"`
 	AutoCompact bool `yaml:"auto_compact" json:"auto_compact"`
 	TokenBudget int  `yaml:"token_budget" json:"token_budget"`
+}
+
+// MemoryConfig holds memory system configuration.
+type MemoryConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	BaseDir string `yaml:"base_dir" json:"base_dir"` // empty = default (~/.tlaude-code/memory/)
 }
 
 // DefaultConfig 返回默认配置
@@ -180,6 +189,10 @@ func DefaultConfig() *Config {
 			Enabled:     true,
 			AutoCompact: true,
 			TokenBudget: 40000,
+		},
+		Memory: MemoryConfig{
+			Enabled: true,
+			BaseDir: "",
 		},
 		Agent: AgentConfig{
 			DefaultAgent: "general",

@@ -184,6 +184,11 @@ func main() {
 
 	// Memory searcher.
 	memSearch := memory.NewSearcher(cfg.SessionDir)
+	memStore := memory.DefaultStore()
+	if cfg.Memory.BaseDir != "" {
+		memStore = memory.NewStore(cfg.Memory.BaseDir)
+	}
+	_ = memStore.EnsureDir()
 
 	// MoA orchestrator (if enabled in config).
 	var orchestrator *moa.Orchestrator
@@ -236,6 +241,7 @@ func main() {
 	}
 	toolReg := tool.DefaultRegistry()
 	agentRuntime := agent.NewAgentRuntime(agentStore, toolReg, reg)
+	agentRuntime.SetMemoryStore(memStore)
 	tm := tool.SharedTaskManager()
 
 	// Plan mode setup (Phase 3).
@@ -350,7 +356,7 @@ func main() {
 			logging.Error("failed to load session", "id", sessionID, "error", err)
 			os.Exit(1)
 		}
-		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil)
+		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil)
 		model.SetSession(sess)
 	} else if resume {
 		sess, err := sessStore.Latest()
@@ -358,14 +364,14 @@ func main() {
 			logging.Error("failed to list sessions", "error", err)
 			os.Exit(1)
 		}
-		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil)
+		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil)
 		if sess != nil {
 			model.SetSession(sess)
 		} else {
 			logging.Info("no sessions to resume")
 		}
 	} else {
-		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil)
+		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil)
 	}
 
 	p := tea.NewProgram(&model, tea.WithAltScreen())

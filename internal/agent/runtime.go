@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tetexu/tlaude-code/internal/llm"
+	"github.com/tetexu/tlaude-code/internal/memory"
 	"github.com/tetexu/tlaude-code/internal/tool"
 	"github.com/tetexu/tlaude-code/internal/tool/executor"
 )
@@ -17,11 +18,12 @@ import (
 // AgentRuntime is the core execution engine for agents.
 // It manages agent lifecycle and implements the LLM message loop.
 type AgentRuntime struct {
-	store   *AgentDefStore
-	toolReg *tool.Registry
-	llmReg  *llm.Registry
-	logger  *slog.Logger
-	active  sync.Map // agentID -> *AgentRun
+	store       *AgentDefStore
+	toolReg     *tool.Registry
+	llmReg      *llm.Registry
+	memoryStore *memory.Store
+	logger      *slog.Logger
+	active      sync.Map // agentID -> *AgentRun
 
 	idCounter atomic.Int64
 }
@@ -29,11 +31,17 @@ type AgentRuntime struct {
 // NewAgentRuntime creates a new AgentRuntime.
 func NewAgentRuntime(store *AgentDefStore, toolReg *tool.Registry, llmReg *llm.Registry) *AgentRuntime {
 	return &AgentRuntime{
-		store:   store,
-		toolReg: toolReg,
-		llmReg:  llmReg,
-		logger:  slog.Default().With("component", "agent-runtime"),
+		store:       store,
+		toolReg:     toolReg,
+		llmReg:      llmReg,
+		memoryStore: memory.DefaultStore(),
+		logger:      slog.Default().With("component", "agent-runtime"),
 	}
+}
+
+// SetMemoryStore sets the memory store used for agent system prompts.
+func (r *AgentRuntime) SetMemoryStore(ms *memory.Store) {
+	r.memoryStore = ms
 }
 
 // RunAgent executes an agent synchronously.
@@ -421,10 +429,37 @@ func (r *AgentRuntime) resolveModelProvider(def *AgentDefinition, opts *RunOptio
 }
 
 func (r *AgentRuntime) buildSystemPrompt(def *AgentDefinition) string {
-	if def.SystemPrompt != "" {
-		return def.SystemPrompt
+	base := def.SystemPrompt
+	if base == "" {
+		base = fmt.Sprintf("You are %s. %s\n%s", def.Name, def.Description, def.WhenToUse)
 	}
-	return fmt.Sprintf("You are %s. %s\n%s", def.Name, def.Description, def.WhenToUse)
+
+	// Inject memory prompt for agents with memory enabled.
+	// Default: inject for "general" and "code" agents with user scope.
+	if r.memoryStore != nil {
+		agentType := def.AgentType
+		memScope := def.Memory
+
+		if memScope == "" && (agentType == "general" || agentType == "code") {
+			memScope = "user"
+		}
+
+		if memScope != "" {
+			var scope memory.AgentMemoryScope
+			switch memScope {
+			case "project":
+				scope = memory.ScopeProject
+			case "local":
+				scope = memory.ScopeLocal
+			default:
+				scope = memory.ScopeUser
+			}
+			memPrompt := memory.LoadAgentMemoryPrompt(agentType, scope)
+			base = memPrompt + "\n\n" + base
+		}
+	}
+
+	return base
 }
 
 // filterTools filters the tool pool based on the agent definition's Tools and DisallowedTools.

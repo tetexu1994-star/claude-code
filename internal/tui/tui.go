@@ -120,6 +120,9 @@ type Model struct {
 	// Memory search.
 	memorySearch *memory.Searcher
 
+	// Memory store (MemDir system).
+	memoryStore *memory.Store
+
 	// MCP.
 	mcpManager *mcp.Manager
 
@@ -145,7 +148,7 @@ type Model struct {
 }
 
 // NewModel creates a new TUI model.
-func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager) Model {
+func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, memStore *memory.Store, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type your message... (Enter to send, Ctrl+C to quit)"
 	ta.ShowLineNumbers = false
@@ -183,6 +186,7 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 		costTracker:     costTracker,
 		costRouter:      costRouter,
 		memorySearch:    memSearch,
+		memoryStore:     memStore,
 		mcpManager:      mcpManager,
 		smartRouting:    smartRouting,
 		agentType:       cfg.Agent.DefaultAgent,
@@ -694,6 +698,76 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Search error: %v", err)})
 		} else {
 			m.messages = append(m.messages, llm.Message{Role: "system", Content: memory.FormatResults(results)})
+		}
+		return m.rebuildChat()
+
+	case input == "/memory" || input == "/memory list":
+		if m.memoryStore == nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Memory system not available."})
+			return m.rebuildChat()
+		}
+		headers, err := m.memoryStore.List()
+		if err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("List error: %v", err)})
+		} else {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Memories:\n" + memory.FormatMemoryManifest(headers)})
+		}
+		return m.rebuildChat()
+
+	case strings.HasPrefix(input, "/memory read "):
+		name := strings.TrimPrefix(input, "/memory read ")
+		name = strings.TrimSpace(name)
+		if name == "" {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /memory read <name>"})
+			return m.rebuildChat()
+		}
+		if m.memoryStore == nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Memory system not available."})
+			return m.rebuildChat()
+		}
+		content, err := m.memoryStore.Read(name)
+		if err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Read error: %v", err)})
+		} else {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Memory: " + name + "\n\n" + content})
+		}
+		return m.rebuildChat()
+
+	case strings.HasPrefix(input, "/memory search "):
+		query := strings.TrimPrefix(input, "/memory search ")
+		query = strings.TrimSpace(query)
+		if query == "" {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /memory search <query>"})
+			return m.rebuildChat()
+		}
+		if m.memoryStore == nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Memory system not available."})
+			return m.rebuildChat()
+		}
+		headers, err := m.memoryStore.Search(query)
+		if err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Search error: %v", err)})
+		} else {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Search results:\n" + memory.FormatMemoryManifest(headers)})
+		}
+		return m.rebuildChat()
+
+	case strings.HasPrefix(input, "/memory delete "):
+		name := strings.TrimPrefix(input, "/memory delete ")
+		name = strings.TrimSpace(name)
+		if name == "" {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /memory delete <name>"})
+			return m.rebuildChat()
+		}
+		if m.memoryStore == nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Memory system not available."})
+			return m.rebuildChat()
+		}
+		if err := m.memoryStore.Delete(name); err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Delete error: %v", err)})
+		} else {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Deleted: %s", name)})
+			m.statusMsg = m.buildStatusMsg()
 		}
 		return m.rebuildChat()
 
@@ -1294,6 +1368,12 @@ func (m *Model) buildStatusMsg() string {
 		msg += " | MoA:" + m.cfg.MoA.Mode
 	}
 
+	// Memory count.
+	if m.memoryStore != nil && m.cfg.Memory.Enabled {
+		count := m.memoryStore.Count()
+		msg += fmt.Sprintf(" | Memory:%d", count)
+	}
+
 	// Background task count.
 	if m.taskManager != nil {
 		tasks := m.taskManager.List()
@@ -1402,6 +1482,10 @@ Commands:
   /route smart Enable smart (cost-aware) routing
   /route fixed Disable smart routing
   /search <q>  Search historical sessions
+  /memory      List all memories
+  /memory read <name>  Read a memory file
+  /memory search <q>   Search memories
+  /memory delete <name> Delete a memory
   /moa         Show MoA status and last result
   /moa on      Enable MoA (requires config)
   /moa off     Disable MoA
