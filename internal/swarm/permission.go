@@ -30,13 +30,13 @@ func (s *SwarmStore) SubmitPermissionRequest(req *PermissionRequest) (<-chan Per
 // Returns an error if the request is not found.
 func (s *SwarmStore) ResolvePermissionRequest(requestID string, resp PermissionResponse) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	req, ok := s.permRequests[requestID]
 	if !ok {
-		s.mu.Unlock()
 		return fmt.Errorf("permission request %q not found", requestID)
 	}
 	delete(s.permRequests, requestID)
-	s.mu.Unlock()
 
 	resp.RequestID = requestID
 

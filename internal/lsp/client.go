@@ -595,7 +595,9 @@ func (c *Client) dispatchMessage(data []byte) {
 
 			c.mu.Lock()
 			if c.transport != nil {
-				c.transport.WriteMessage(respData)
+				if wrErr := c.transport.WriteMessage(respData); wrErr != nil {
+					logging.Warn("lsp write response", "server", c.serverName, "error", wrErr)
+				}
 			}
 			c.mu.Unlock()
 		} else {

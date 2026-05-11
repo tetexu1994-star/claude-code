@@ -19,20 +19,30 @@ const (
 // GetAgentMemoryDir returns the directory for an agent type + scope.
 func GetAgentMemoryDir(agentType string, scope AgentMemoryScope) string {
 	dirName := sanitizeAgentTypeForPath(agentType)
+	var base string
 	switch scope {
 	case ScopeProject:
-		cwd, _ := os.Getwd()
-		return filepath.Join(cwd, ".claude", "agent-memory", dirName) + string(filepath.Separator)
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "."
+		}
+		base = filepath.Join(cwd, ".claude", "agent-memory", dirName)
 	case ScopeLocal:
-		cwd, _ := os.Getwd()
-		return filepath.Join(cwd, ".claude", "agent-memory-local", dirName) + string(filepath.Separator)
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "."
+		}
+		base = filepath.Join(cwd, ".claude", "agent-memory-local", dirName)
 	case ScopeUser:
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".tlaude-code", "agent-memory", dirName) + string(filepath.Separator)
+		fallthrough
 	default:
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".tlaude-code", "agent-memory", dirName) + string(filepath.Separator)
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "."
+		}
+		base = filepath.Join(home, ".tlaude-code", "agent-memory", dirName)
 	}
+	return base + string(filepath.Separator)
 }
 
 // IsAgentMemoryPath checks if a path belongs to agent memory (any scope).

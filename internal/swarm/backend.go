@@ -72,10 +72,6 @@ func (b *InProcessBackend) SetContext(ctx context.Context) {
 // Spawn starts a new teammate agent in a goroutine.
 func (b *InProcessBackend) Spawn(config TeammateSpawnConfig) (*TeammateSpawnResult, error) {
 	agentType := DefaultAgentType
-	if config.Name != "" {
-		// Use config name to determine agent type; default to general.
-		agentType = DefaultAgentType
-	}
 
 	def, ok := b.store.Get(agentType)
 	if !ok {
@@ -179,12 +175,12 @@ func (b *InProcessBackend) Terminate(agentID string) error {
 	}
 
 	// Write a termination message to the teammate's mailbox.
-	teamName, _ := parseAgentID(agentID)
+	teamName, agentName := parseAgentID(agentID)
 	msg := MailboxMessage{
 		From: "leader",
 		Text: "/terminate",
 	}
-	_ = WriteToMailbox(teamName, agentID, msg)
+	_ = WriteToMailbox(teamName, agentName, msg)
 
 	// Cancel the context to stop the goroutine.
 	at.cancel()

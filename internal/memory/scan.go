@@ -60,9 +60,13 @@ func (s *Store) scanDir() ([]MemoryHeader, error) {
 		return headers[i].ModTime.After(headers[j].ModTime)
 	})
 
-	// Cap at MAX_MEMORY_FILES.
-	if len(headers) > MAX_MEMORY_FILES {
-		headers = headers[:MAX_MEMORY_FILES]
+	// Cap at configured maximum.
+	maxFiles := s.cfg.MaxMemFiles
+	if maxFiles <= 0 {
+		maxFiles = MAX_MEMORY_FILES
+	}
+	if len(headers) > maxFiles {
+		headers = headers[:maxFiles]
 	}
 
 	return headers, nil

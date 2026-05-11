@@ -55,7 +55,7 @@ func (s *Store) Write(name, description, mtype, content string) (string, error) 
 		return "", fmt.Errorf("memory content must start with YAML frontmatter (---)")
 	}
 
-	mt, ok := ParseMemoryType(mtype)
+	_, ok := ParseMemoryType(mtype)
 	if !ok {
 		return "", fmt.Errorf("invalid memory type: %q (must be one of: user, feedback, project, reference)", mtype)
 	}
@@ -74,7 +74,6 @@ func (s *Store) Write(name, description, mtype, content string) (string, error) 
 	// Update MEMORY.md index.
 	_ = s.rebuildIndexLocked()
 
-	_ = mt // consumed for validation above
 	return filename, nil
 }
 
