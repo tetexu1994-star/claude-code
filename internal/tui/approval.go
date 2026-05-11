@@ -27,26 +27,26 @@ type ApprovalResult struct {
 var (
 	approvalBoxStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("226")).
+				BorderForeground(lipgloss.Color("#FBBF24")).
 				Padding(0, 1).
 				Width(70)
 
 	approvalTitleStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("226"))
+				Foreground(lipgloss.Color("#FBBF24"))
 
 	approvalSummaryStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255"))
+				Foreground(lipgloss.Color("#FFFFFF"))
 
 	approvalDetailStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("243"))
+				Foreground(lipgloss.Color("#A1A1AA"))
 
 	approvalKeyStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("39")).
+				Foreground(lipgloss.Color("#22D3EE")).
 				Bold(true)
 
 	approvalDescStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("252"))
+				Foreground(lipgloss.Color("#D4D4D8"))
 )
 
 // buildApprovalSummary creates a one-line summary from a tool call.

@@ -8,19 +8,19 @@ import (
 
 var (
 	diffAddStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42"))
+			Foreground(lipgloss.Color("#22C55E"))
 
 	diffDelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("203"))
+			Foreground(lipgloss.Color("#EF4444"))
 
 	diffChgStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("226"))
+			Foreground(lipgloss.Color("#FBBF24"))
 
 	diffHdrStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color("#A1A1AA"))
 
 	diffMetaStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color("#A1A1AA"))
 )
 
 // renderDiffFull generates a full-screen diff view with a header and footer.

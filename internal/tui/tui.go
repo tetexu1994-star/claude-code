@@ -35,106 +35,106 @@ var (
 			PaddingLeft(1)
 
 	statusBarStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("63")).
-			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("#27272A")).
+			Foreground(lipgloss.Color("#FFFFFF")).
 			Padding(0, 1)
 
 	userMsgStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("39"))
+			Foreground(lipgloss.Color("#22D3EE"))
 
 	assistantMsgStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))
+		Foreground(lipgloss.Color("#A78BFA"))
 
 	systemMsgStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color("#A1A1AA"))
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196"))
+			Foreground(lipgloss.Color("#EF4444"))
 
 	codeBlockStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("236")).
+			Background(lipgloss.Color("#27272A")).
 			Padding(0, 1).
 			MarginLeft(2)
 
 	codeHeaderStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243")).
+			Foreground(lipgloss.Color("#A1A1AA")).
 			MarginLeft(2)
 
 	moaDetailStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(lipgloss.Color("#A1A1AA"))
 	// Welcome screen styles.
 	welcomeContainerStyle = lipgloss.NewStyle().
 		Width(60).
 		Padding(2, 3).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("63"))
+		BorderForeground(lipgloss.Color("#A78BFA"))
 
 	welcomeTitleStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("63"))
+		Foreground(lipgloss.Color("#A78BFA"))
 
 	welcomeTipStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(lipgloss.Color("#D4D4D8"))
 
 	welcomeKeyStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	// Coordinator panel styles.
 	coordinatorBoxStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("63")).
+		BorderForeground(lipgloss.Color("#A78BFA")).
 		Padding(0, 1)
 
 	coordinatorHeaderStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("63"))
+		Foreground(lipgloss.Color("#A78BFA"))
 
 	coordinatorRunningStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	coordinatorDoneStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("42"))
+		Foreground(lipgloss.Color("#22C55E"))
 
 	coordinatorFailedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))
+		Foreground(lipgloss.Color("#EF4444"))
 
 	// Markdown rendering styles.
 	mdH1Style = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("63"))
+		Foreground(lipgloss.Color("#A78BFA"))
 
 	mdH2Style = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("69"))
+		Foreground(lipgloss.Color("#818CF8"))
 
 	mdH3Style = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("75"))
+		Foreground(lipgloss.Color("#60A5FA"))
 
 	mdInlineCodeStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("236")).
-		Foreground(lipgloss.Color("222"))
+		Background(lipgloss.Color("#27272A")).
+		Foreground(lipgloss.Color("#FBBF24"))
 
 	mdBoldStyle = lipgloss.NewStyle().
 		Bold(true)
 
 	// Enhanced status bar styles.
 	statusBarEnhancedStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("63")).
-		Foreground(lipgloss.Color("15")).
+		Background(lipgloss.Color("#27272A")).
+		Foreground(lipgloss.Color("#FFFFFF")).
 		Padding(0, 1)
 
 	statusBarSepStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("63")).
-		Foreground(lipgloss.Color("111"))
+		Background(lipgloss.Color("#27272A")).
+		Foreground(lipgloss.Color("#71717A"))
 
 	// Spinner style.
 	spinnerFrameStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("63"))
+		Foreground(lipgloss.Color("#A78BFA"))
 
 	spinnerTextStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(lipgloss.Color("#D4D4D8"))
 )
 
 // Version is the package version, set at build time or defaulting to "dev".
@@ -260,6 +260,10 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 	ta.ShowLineNumbers = false
 	ta.SetHeight(3)
 	ta.Focus()
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().Background(lipgloss.Color("#27272A"))
+	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("#71717A"))
+	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE"))
+	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("#52525B"))
 	ta.CharLimit = 32000
 
 	vp := viewport.New(80, 20)
@@ -325,6 +329,9 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
+	lipgloss.SetHasDarkBackground(true)
+	os.Setenv("COLORTERM", "truecolor")
+	os.Setenv("TERM", "xterm-256color")
 	return tea.Batch(
 		textarea.Blink,
 		tea.EnterAltScreen,
@@ -341,9 +348,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ready = true
 
-		m.input.SetWidth(msg.Width - 4)
-		m.chatView.Width = msg.Width - 2
-		m.chatView.Height = msg.Height - 7
+		m.input.SetWidth(max(msg.Width-4, 10))
+		m.chatView.Width = max(msg.Width-2, 10)
+		m.chatView.Height = max(msg.Height-7, 3)
+
 
 		cmds = append(cmds, m.rebuildChat())
 
@@ -519,8 +527,8 @@ func (m Model) View() string {
 
 	inputStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("63")).
-		Width(m.width - 2)
+		BorderForeground(lipgloss.Color("#A78BFA")).
+		Width(max(m.width-2, 10))
 	inputView := inputStyle.Render(m.input.View())
 
 	statusBar := m.renderStatusBarEnhanced()
@@ -715,6 +723,10 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 		m.quitting = true
 		m.cancel()
 		return tea.Quit
+
+	case input == "/welcome" || input == "/start":
+		m.welcomeVisible = true
+		return m.rebuildChat()
 
 	case input == "/config":
 		info := fmt.Sprintf(
@@ -1489,29 +1501,33 @@ func (m *Model) buildStatusMsg() string {
 		routeLabel = "Smart Route"
 	}
 
-	totalCost := 0.0
-	if m.costTracker != nil {
-		totalCost = m.costTracker.TotalCost()
-	}
-
 	// Agent type with color mapping.
 	agentLabel := m.agentType
 	if agentLabel == "" {
 		agentLabel = "general"
 	}
 
-	msg := fmt.Sprintf("%s | %s | %s | %s | $%.2f",
-		m.provider.Name(), m.cfg.Model, routeLabel, agentLabel, totalCost)
+	providerName := "unknown"
+	if m.provider != nil {
+		providerName = m.provider.Name()
+	}
+	modelName := "unknown"
+	if m.cfg != nil {
+		modelName = m.cfg.Model
+	}
+
+	msg := fmt.Sprintf("%s | %s | %s | %s",
+		providerName, modelName, routeLabel, agentLabel)
 
 	if m.sandboxer != nil {
 		msg += " | Sandbox:" + m.sandboxer.Name()
 	}
-	if m.moaEnabled {
+	if m.moaEnabled && m.cfg != nil {
 		msg += " | MoA:" + m.cfg.MoA.Mode
 	}
 
 	// Memory count.
-	if m.memoryStore != nil && m.cfg.Memory.Enabled {
+	if m.memoryStore != nil && m.cfg != nil && m.cfg.Memory.Enabled {
 		count := m.memoryStore.Count()
 		msg += fmt.Sprintf(" | Memory:%d", count)
 	}
@@ -1618,6 +1634,7 @@ Commands:
   /help        Show this help
   /config      Show current configuration
   /clear       Clear chat history
+  /welcome     Show welcome screen
   /save        Save session to disk
   /cost        Show cost report (estimated)
   /route       Show routing configuration
@@ -1974,34 +1991,89 @@ func (m Model) showWelcome() bool {
 	return m.welcomeVisible && len(m.messages) == 0
 }
 
-// welcomeView renders the startup welcome screen.
+// welcomeView renders the complete startup welcome screen with tips, features,
+// input box, and status bar.
 func (m Model) welcomeView() string {
-	title := welcomeTitleStyle.Render("Tlaude Code") + " " + welcomeTitleStyle.Render(Version)
-	tagline := welcomeTipStyle.Render("A production-grade CLI tool with multi-provider LLM support")
-
 	var sb strings.Builder
-	sb.WriteString(title)
-	sb.WriteString("\n")
-	sb.WriteString(tagline)
+
+	// Title line.
+	sb.WriteString(welcomeTitleStyle.Render("Tlaude Code"))
+	sb.WriteString("  ")
+	sb.WriteString(welcomeTipStyle.Render("v" + Version))
 	sb.WriteString("\n\n")
 
+	// Provider & model info.
+	if m.cfg != nil {
+		sb.WriteString(welcomeKeyStyle.Render("Provider:"))
+		sb.WriteString("  ")
+		sb.WriteString(welcomeTipStyle.Render(m.cfg.Provider))
+		sb.WriteString("  ")
+		sb.WriteString(welcomeKeyStyle.Render("Model:"))
+		sb.WriteString("  ")
+		sb.WriteString(welcomeTipStyle.Render(m.cfg.Model))
+		sb.WriteString("\n")
+	}
+
+	// Agent info.
+	if m.agentStore != nil {
+		sb.WriteString(welcomeKeyStyle.Render("Agents:"))
+		sb.WriteString("  ")
+		sb.WriteString(welcomeTipStyle.Render(fmt.Sprintf("%d built-in, %d total", m.agentStore.CountBuiltIn(), m.agentStore.Count())))
+		if m.moaEnabled {
+			sb.WriteString("  |  ")
+			sb.WriteString(welcomeKeyStyle.Render("MoA:"))
+			sb.WriteString("  ")
+			sb.WriteString(welcomeTipStyle.Render("enabled"))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Features.
+	if m.planManager != nil || m.mcpManager != nil || m.pluginManager != nil || m.memorySearch != nil {
+		sb.WriteString(welcomeKeyStyle.Render("Features:"))
+		sb.WriteString("  ")
+		features := make([]string, 0)
+		if m.planManager != nil {
+			features = append(features, "Plan")
+		}
+		if m.mcpManager != nil {
+			features = append(features, "MCP")
+		}
+		if m.pluginManager != nil {
+			features = append(features, "Plugin(Lua)")
+		}
+		if m.memorySearch != nil {
+			features = append(features, "Memory")
+		}
+		if m.compactManager != nil {
+			features = append(features, "Compact")
+		}
+		if m.swarmStore != nil {
+			features = append(features, "Swarm")
+		}
+		sb.WriteString(welcomeTipStyle.Render(strings.Join(features, ", ")))
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+
+	// Commands.
 	tips := []struct {
 		key, desc string
 	}{
 		{"/help", "Show available commands"},
-		{"/config", "Edit configuration"},
-		{"/clear", "Clear chat history"},
-		{"/save", "Save session to disk"},
-		{"/cost", "Show cost report"},
+		{"/agent list", "List/switch agents"},
 		{"/plan create", "Create a new plan"},
-		{"/agent list", "List available agents"},
+		{"/clear", "Clear chat"},
+		{"/save", "Save session"},
+		{"/welcome", "Show welcome screen"},
 		{"Ctrl+C", "Exit"},
 	}
 
 	for _, tip := range tips {
 		sb.WriteString("  ")
 		sb.WriteString(welcomeKeyStyle.Render(tip.key))
-		sb.WriteString("  ")
+		sb.WriteString(strings.Repeat(" ", max(14-len(tip.key), 2)))
 		sb.WriteString(welcomeTipStyle.Render(tip.desc))
 		sb.WriteString("\n")
 	}
@@ -2009,11 +2081,27 @@ func (m Model) welcomeView() string {
 	sb.WriteString("\n")
 	sb.WriteString(welcomeTipStyle.Render("Type a message or command to begin..."))
 
-	return lipgloss.Place(
-		m.width, m.height-4,
-		lipgloss.Center, lipgloss.Center,
-		welcomeContainerStyle.Render(sb.String()),
-	)
+	// Input box.
+	var inputView string
+	func() {
+		defer func() { recover() }()
+		inputStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#A78BFA")).
+			Width(max(m.width-2, 10))
+		inputView = inputStyle.Render(m.input.View())
+	}()
+
+	// Status bar.
+	statusBar := m.renderStatusBarEnhanced()
+
+	return chatStyle.Render(lipgloss.JoinVertical(
+		lipgloss.Top,
+		sb.String(),
+		"",
+		inputView,
+		statusBar,
+	))
 }
 
 // ---------------------------------------------------------------------------
@@ -2207,32 +2295,37 @@ func renderMarkdownInline(text string) string {
 // renderStatusBarEnhanced returns the enhanced status bar line.
 func (m Model) renderStatusBarEnhanced() string {
 	totalTokens := 0
-	totalCost := 0.0
 	if m.costTracker != nil {
 		stats := m.costTracker.GetAllStats()
 		for _, s := range stats {
 			totalTokens += s.TotalInputTokens + s.TotalOutputTokens
 		}
-		totalCost = m.costTracker.TotalCost()
 	}
 
 	mode := "normal"
-	if m.moaEnabled {
+	if m.moaEnabled && m.cfg != nil {
 		mode = "moa:" + m.cfg.MoA.Mode
 	}
 	if m.planManager != nil && m.planManager.IsInPlanMode() {
 		mode = "plan"
 	}
 
+	providerName := "unknown"
+	modelName := "unknown"
+	if m.provider != nil {
+		providerName = m.provider.Name()
+	}
+	if m.cfg != nil {
+		modelName = m.cfg.Model
+	}
+
 	sep := statusBarSepStyle.Render(" │ ")
 	bar := statusBarEnhancedStyle.Render("▌ ") +
-		statusBarEnhancedStyle.Render(m.provider.Name()+":"+m.cfg.Model) +
+		statusBarEnhancedStyle.Render(providerName+":"+modelName) +
 		sep +
 		statusBarEnhancedStyle.Render("mode:"+mode) +
 		sep +
-		statusBarEnhancedStyle.Render(fmt.Sprintf("tokens: %s", formatTokens(totalTokens))) +
-		sep +
-		statusBarEnhancedStyle.Render(fmt.Sprintf("cost: $%.2f", totalCost))
+		statusBarEnhancedStyle.Render(fmt.Sprintf("tokens: %s", formatTokens(totalTokens)))
 
 	return statusBarEnhancedStyle.Width(m.width).Render(bar)
 }
