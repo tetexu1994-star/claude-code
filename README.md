@@ -259,5 +259,5 @@ make dist
 ## Requirements
 
 - Go 1.24+
-- macOS/Linux (Windows untested)
+- macOS, Linux, Windows
 - At least one LLM provider API key

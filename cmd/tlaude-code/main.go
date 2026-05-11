@@ -100,6 +100,11 @@ func main() {
 	// List agents mode: print available agents and exit.
 	if listAgents {
 		store := agent.NewAgentDefStore()
+		// Also load definition-based agents for a complete listing.
+		cwd, _ := os.Getwd()
+		if result, err := definition.LoadAgentsDir(cwd); err == nil {
+			store.RegisterAgents(result.ActiveAgents)
+		}
 		listAgentDefinitions(store)
 		return
 	}
