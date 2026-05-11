@@ -546,8 +546,49 @@ tlaude-code [flags] [prompt...]
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 2.2.0 | 2026-05-11 | Agent Definition Loading System + Fork Subagent + Coordinator Mode + TUI Enhancement |
+| 2.1.0 | 2026-05-10 | Agent + Swarm + Compact + Completion systems |
 | 2.0.0 | 2026-05-10 | Plan Mode + Plugin System + Distribution (GoReleaser, Homebrew, CI) + Full test coverage |
 | 1.0.0 | 2026-05-10 | Tool System + Permission System + Multi-Agent + MoA Fusion |
 | 0.3.0 | 2026-05-10 | SafetyMode + Data race fixes + Documentation |
 | 0.2.0 | 2026-05-10 | MoA + Sandbox + MCP + Cost routing |
 | 0.1.0 | 2026-05-10 | Initial scaffold + 7 providers + TUI |
+
+### 9.1 v2.2.0 — Agent Definition Loading, Fork Subagent, Coordinator Mode, TUI Enhancements
+
+**Agent Definition Loading System**
+- Markdown frontmatter agent definitions: agents defined as `.md` files with YAML frontmatter in `agents/` directories
+- `definition.LoadAgentsDir(cwd)` scans `<cwd>/agents/*.md` for custom agents and merges them with built-ins
+- Layered merge by source priority: BuiltIn (0) → Plugin (1) → User (2) → Project (3) → Policy (4)
+- Agents wired into `agent.AgentDefStore` at startup in `main.go`
+
+**CC-Accurate Agent System Prompts**
+- All 5 built-in agents (`general-purpose`, `explore`, `plan`, `verification`, `guide`) updated with Claude Code-accurate system prompts
+- Tool lists, disallowed-tool lists, background flags, model overrides, and `omitClaudeMd` fields aligned with CC source
+- `MaxTurns`, `CriticalSystemReminder`, and `PermissionMode` fields supported per agent definition
+
+**Fork Subagent Enhancement**
+- New built-in `fork` agent type: implicit subagent that inherits full conversation context
+- Not selectable via `subagent_type` — triggered when `subagent_type` is omitted and the fork experiment is active
+- Fork children inherit parent's conversation and system prompt; `MaxTurns: 200`, `PermissionMode: "bubble"`
+
+**Coordinator Mode**
+- New `internal/coordinator` package implementing Coordinator Mode
+- `IsCoordinatorMode()` detects `TLAUDE_CODE_COORDINATOR_MODE=1` environment variable
+- `MatchSessionMode()` ensures resumed sessions match current coordinator state
+- `GetCoordinatorSystemPrompt(simpleMode)` returns the full coordinator system prompt (adapted from Claude Code's `coordinatorMode.ts`)
+- Full mode: workers have broad tool access; Simple mode (`TLAUDE_CODE_SIMPLE=1`): restricted to Bash, Read, Edit
+- Coordinator state passed into TUI model via `coordinatorMode bool` field
+
+**TUI Enhancements**
+- Welcome screen: startup splash with version, tips, and keyboard shortcuts
+- Coordinator panel: sub-agent task status panel above chat (running/completed/failed indicators)
+- Markdown rendering: lightweight lipgloss-based markdown support (H1-H3, code blocks, inline code, bold, lists)
+- Spinner: animated Braille spinner for thinking/tool execution states
+- Enhanced status bar: provider, mode, token count, cost display with colored separators
+
+**Architecture Update**
+- New packages: `internal/agent/definition/` (agent definition loading, markdown parsing, memory types), `internal/coordinator/` (coordinator mode)
+- Updated packages: `internal/agent/` (agent store wiring), `internal/tui/` (coordinator panel, welcome screen, markdown, spinner, enhanced status bar), `cmd/tlaude-code/` (agent loading + coordinator wiring)
+
+**CC Source Coverage**: 72/100

@@ -8,8 +8,8 @@ import (
 func TestGetBuiltInAgents(t *testing.T) {
 	agents := GetBuiltInAgents()
 
-	if len(agents) != 5 {
-		t.Fatalf("expected 5 built-in agents, got %d", len(agents))
+	if len(agents) != 6 {
+		t.Fatalf("expected 6 built-in agents, got %d", len(agents))
 	}
 
 	wantTypes := map[string]bool{
@@ -18,6 +18,7 @@ func TestGetBuiltInAgents(t *testing.T) {
 		"plan":            false,
 		"verification":    false,
 		"guide":           false,
+		"fork":            false,
 	}
 
 	for _, a := range agents {
@@ -33,7 +34,7 @@ func TestGetBuiltInAgents(t *testing.T) {
 		if a.Source != SourceBuiltIn {
 			t.Errorf("agent %q has Source = %q, want %q", a.AgentType, a.Source, SourceBuiltIn)
 		}
-		if a.SystemPrompt == "" {
+		if a.AgentType != "fork" && a.SystemPrompt == "" {
 			t.Errorf("agent %q has empty SystemPrompt", a.AgentType)
 		}
 		if _, ok := wantTypes[a.AgentType]; ok {
@@ -96,11 +97,11 @@ func TestBuiltInAgents_HaveValidFields(t *testing.T) {
 		if a.Description == "" {
 			t.Error("empty Description")
 		}
-		if a.SystemPrompt == "" {
-			t.Error("empty SystemPrompt")
+		if a.AgentType != "fork" && a.SystemPrompt == "" {
+			t.Errorf("agent %q has empty SystemPrompt", a.AgentType)
 		}
 		if a.WhenToUse == "" {
-			t.Error("empty WhenToUse")
+			t.Errorf("agent %q has empty WhenToUse", a.AgentType)
 		}
 	}
 }
@@ -112,7 +113,7 @@ func TestBuiltInAgentTypes(t *testing.T) {
 		types[i] = a.AgentType
 	}
 
-	expected := []string{"general-purpose", "explore", "plan", "verification", "guide"}
+	expected := []string{"general-purpose", "explore", "plan", "verification", "guide", "fork"}
 	for i, want := range expected {
 		if types[i] != want {
 			t.Errorf("agent type at index %d = %q, want %q", i, types[i], want)

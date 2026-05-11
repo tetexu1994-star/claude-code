@@ -1,7 +1,7 @@
 package definition
 
-// GetBuiltInAgents returns the five built-in agent definitions:
-// GeneralPurpose, Explore, Plan, Verification, and Guide.
+// GetBuiltInAgents returns the six built-in agent definitions:
+// GeneralPurpose, Explore, Plan, Verification, Guide, and Fork.
 func GetBuiltInAgents() []*AgentDefinition {
 	return []*AgentDefinition{
 		// === GeneralPurpose ===
@@ -249,9 +249,26 @@ You know about:
 
 When answering, be concise and reference specific commands or configuration keys. Help users discover the right approach rather than just giving commands — explain the why behind recommendations.`,
 		},
+
+		// === Fork (implicit subagent) ===
+		{
+			AgentType:      "fork",
+			Name:           "Fork Subagent",
+			Description:    "Implicit fork — inherits full conversation context. Not selectable via subagent_type; triggered by omitting subagent_type when the fork experiment is active.",
+			WhenToUse:      "Internal use only. Fork children inherit parent's conversation and system prompt.",
+			Tools:          []string{"*"},
+			MaxTurns:       intPtr(200),
+			Source:         SourceBuiltIn,
+			Model:          "inherit",
+			PermissionMode: strPtr("bubble"),
+		},
 	}
 }
 
 func intPtr(i int) *int {
 	return &i
+}
+
+func strPtr(s string) *string {
+	return &s
 }

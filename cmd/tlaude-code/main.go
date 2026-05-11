@@ -15,7 +15,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/tetexu/tlaude-code/internal/agent"
+	"github.com/tetexu/tlaude-code/internal/agent/definition"
 	"github.com/tetexu/tlaude-code/internal/config"
+	"github.com/tetexu/tlaude-code/internal/coordinator"
 	"github.com/tetexu/tlaude-code/internal/cost"
 	"github.com/tetexu/tlaude-code/internal/llm"
 	"github.com/tetexu/tlaude-code/internal/logging"
@@ -240,6 +242,15 @@ func main() {
 			logging.Debug("no user agents loaded", "dir", cfg.Agent.AgentsDir, "error", err)
 		}
 	}
+	cwd, _ := os.Getwd()
+	if result, err := definition.LoadAgentsDir(cwd); err == nil {
+		agentStore.RegisterAgents(result.ActiveAgents)
+		if len(result.FailedFiles) > 0 {
+			for _, f := range result.FailedFiles {
+				logging.Debug("failed to load agent definition", "file", f.Path, "error", f.Error)
+			}
+		}
+	}
 	toolReg := tool.DefaultRegistry()
 	agentRuntime := agent.NewAgentRuntime(agentStore, toolReg, reg)
 	agentRuntime.SetMemoryStore(memStore)
@@ -349,6 +360,14 @@ func main() {
 		"total_agents", agentStore.Count(),
 	)
 
+	// Check coordinator mode for system prompt override.
+	if coordinator.IsCoordinatorMode() {
+		logging.Info("coordinator mode enabled", "env", coordinator.CoordinatorEnvVar)
+		simpleMode := os.Getenv("TLAUDE_CODE_SIMPLE") == "1"
+		coordinatorPrompt := coordinator.GetCoordinatorSystemPrompt(simpleMode)
+		_ = coordinatorPrompt // available for system prompt setup
+	}
+
 	// Swarm/Teams system initialization.
 	var swarmStore *swarm.SwarmStore
 	if cfg.Swarm.Enabled {
@@ -369,6 +388,7 @@ func main() {
 	}
 
 	// Launch TUI.
+	coordinatorMode := coordinator.IsCoordinatorMode()
 	var model tui.Model
 	if sessionID != "" {
 		sess, err := sessStore.Load(sessionID)
@@ -376,7 +396,7 @@ func main() {
 			logging.Error("failed to load session", "id", sessionID, "error", err)
 			os.Exit(1)
 		}
-		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil, swarmStore)
+		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil, swarmStore, coordinatorMode)
 		model.SetSession(sess)
 	} else if resume {
 		sess, err := sessStore.Latest()
@@ -384,14 +404,14 @@ func main() {
 			logging.Error("failed to list sessions", "error", err)
 			os.Exit(1)
 		}
-		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil, swarmStore)
+		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil, swarmStore, coordinatorMode)
 		if sess != nil {
 			model.SetSession(sess)
 		} else {
 			logging.Info("no sessions to resume")
 		}
 	} else {
-		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil, swarmStore)
+		model = tui.NewModel(cfg, selectedProvider, sessStore, orchestrator, costTracker, costRouter, memSearch, memStore, mcpManager, agentStore, agentRuntime, toolReg, tm, planManager, pluginManager, nil, swarmStore, coordinatorMode)
 	}
 
 	p := tea.NewProgram(&model, tea.WithAltScreen())

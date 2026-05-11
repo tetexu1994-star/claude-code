@@ -245,13 +245,16 @@ type Model struct {
 	// Swarm/Teams system.
 	swarmStore *swarm.SwarmStore
 
+	// Coordinator mode.
+	coordinatorMode bool
+
 	// Context for cancellation.
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // NewModel creates a new TUI model.
-func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, memStore *memory.Store, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager, swarmStore *swarm.SwarmStore) Model {
+func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, memStore *memory.Store, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager, swarmStore *swarm.SwarmStore, coordinatorMode bool) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type your message... (Enter to send, Ctrl+C to quit)"
 	ta.ShowLineNumbers = false
@@ -301,6 +304,7 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 		pluginManager:   pluginManager,
 		compactManager:  compactManager,
 		swarmStore:      swarmStore,
+		coordinatorMode: coordinatorMode,
 		ctx:             ctx,
 		cancel:          cancel,
 		welcomeVisible:  true,
