@@ -25,6 +25,7 @@ import (
 	"github.com/tetexu/tlaude-code/internal/plugin"
 	"github.com/tetexu/tlaude-code/internal/sandbox"
 	"github.com/tetexu/tlaude-code/internal/session"
+	"github.com/tetexu/tlaude-code/internal/swarm"
 	"github.com/tetexu/tlaude-code/internal/tool"
 	"github.com/tetexu/tlaude-code/internal/tools"
 )
@@ -142,13 +143,16 @@ type Model struct {
 	// Compact system.
 	compactManager *compact.Manager
 
+	// Swarm/Teams system.
+	swarmStore *swarm.SwarmStore
+
 	// Context for cancellation.
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // NewModel creates a new TUI model.
-func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, memStore *memory.Store, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager) Model {
+func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, memStore *memory.Store, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager, swarmStore *swarm.SwarmStore) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type your message... (Enter to send, Ctrl+C to quit)"
 	ta.ShowLineNumbers = false
@@ -197,6 +201,7 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 		planManager:     planManager,
 		pluginManager:   pluginManager,
 		compactManager:  compactManager,
+		swarmStore:      swarmStore,
 		ctx:             ctx,
 		cancel:          cancel,
 	}
@@ -789,6 +794,9 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 
 		case input == "/compact" || strings.HasPrefix(input, "/compact "):
 			return m.handleCompactCommand(input)
+
+		case strings.HasPrefix(input, "/team"):
+			return m.handleTeamCommand(input)
 
 		case input == "/plugins":
 			info := m.buildPluginStatus()
@@ -1634,6 +1642,145 @@ func (m *Model) SetSession(sess *session.Session) {
 	m.messages = sess.Messages
 	m.chatView.GotoBottom()
 	m.statusMsg = m.buildStatusMsg() + fmt.Sprintf(" | session: %s", sess.ID[:8])
+}
+
+// handleTeamCommand dispatches /team subcommands.
+func (m *Model) handleTeamCommand(input string) tea.Cmd {
+	parts := strings.Fields(input)
+	if len(parts) < 2 {
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /team [list|create|remove|spawn|kill|message] ..."})
+		return m.rebuildChat()
+	}
+
+	sub := parts[1]
+	switch sub {
+	case "list":
+		teams := m.swarmStore.ListTeams()
+		if len(teams) == 0 {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "No teams found. Create one with /team create <name> [description]"})
+			return m.rebuildChat()
+		}
+		var sb strings.Builder
+		for _, t := range teams {
+			sb.WriteString(fmt.Sprintf("\n## Team: %s\n", t.Name))
+			if t.Description != "" {
+				sb.WriteString(fmt.Sprintf("  %s\n", t.Description))
+			}
+			sb.WriteString(fmt.Sprintf("  Created: %s | Lead: %s | Members: %d\n",
+				t.CreatedAt.Format("2006-01-02 15:04"), t.LeadAgentID, len(t.Members)))
+			for _, mbr := range t.Members {
+				active := " "
+				if mbr.IsActive {
+					active = "*"
+				}
+				sb.WriteString(fmt.Sprintf("  %s %s (%s)", active, mbr.Name, mbr.AgentID))
+				if mbr.Prompt != "" {
+					prompt := mbr.Prompt
+					if len(prompt) > 60 {
+						prompt = prompt[:60] + "..."
+					}
+					sb.WriteString(fmt.Sprintf(" — %s", prompt))
+				}
+				sb.WriteString("\n")
+			}
+		}
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: sb.String()})
+		return m.rebuildChat()
+
+	case "create":
+		if len(parts) < 3 {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /team create <name> [description]"})
+			return m.rebuildChat()
+		}
+		name := parts[2]
+		desc := ""
+		if len(parts) > 3 {
+			desc = strings.Join(parts[3:], " ")
+		}
+		tf, err := m.swarmStore.CreateTeam(name, desc, "leader")
+		if err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			return m.rebuildChat()
+		}
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Team %q created.", tf.Name)})
+		return m.rebuildChat()
+
+	case "remove":
+		if len(parts) < 3 {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /team remove <name>"})
+			return m.rebuildChat()
+		}
+		name := parts[2]
+		if err := m.swarmStore.RemoveTeam(name); err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			return m.rebuildChat()
+		}
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Team %q removed.", name)})
+		return m.rebuildChat()
+
+	case "spawn":
+		if len(parts) < 5 {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /team spawn <team> <name> <prompt>"})
+			return m.rebuildChat()
+		}
+		teamName := parts[2]
+		agentName := parts[3]
+		prompt := strings.Join(parts[4:], " ")
+
+		config := swarm.TeammateSpawnConfig{
+			Name:     agentName,
+			TeamName: teamName,
+			Prompt:   prompt,
+		}
+		result, err := m.swarmStore.SpawnTeammate(config)
+		if err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			return m.rebuildChat()
+		}
+		if !result.Success {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Spawn failed: %s", result.Error)})
+			return m.rebuildChat()
+		}
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Teammate %q spawned in team %q (id: %s)", agentName, teamName, result.AgentID)})
+		return m.rebuildChat()
+
+	case "kill":
+		if len(parts) < 4 {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /team kill <team> <agent-id>"})
+			return m.rebuildChat()
+		}
+		teamName := parts[2]
+		agentID := parts[3]
+		if err := m.swarmStore.KillTeammate(teamName, agentID); err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			return m.rebuildChat()
+		}
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Teammate %q killed in team %q.", agentID, teamName)})
+		return m.rebuildChat()
+
+	case "message":
+		if len(parts) < 5 {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /team message <team> <agent-id> <text>"})
+			return m.rebuildChat()
+		}
+		teamName := parts[2]
+		agentID := parts[3]
+		text := strings.Join(parts[4:], " ")
+		msg := swarm.MailboxMessage{
+			From: "leader",
+			Text: text,
+		}
+		if err := m.swarmStore.SendTeammateMessage(teamName, agentID, msg); err != nil {
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			return m.rebuildChat()
+		}
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Message sent to %q in team %q.", agentID, teamName)})
+		return m.rebuildChat()
+
+	default:
+		m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Unknown /team subcommand: %s. Use: list, create, remove, spawn, kill, message", sub)})
+		return m.rebuildChat()
+	}
 }
 
 // SaveSession saves the current session to disk.

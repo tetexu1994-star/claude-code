@@ -132,6 +132,9 @@ type Config struct {
 
 	// Memory system.
 	Memory MemoryConfig `yaml:"memory" json:"memory"`
+
+	// Swarm/Teams system.
+	Swarm SwarmConfig `yaml:"swarm" json:"swarm"`
 }
 
 // CompactConfig holds context compaction settings.
@@ -145,6 +148,15 @@ type CompactConfig struct {
 type MemoryConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	BaseDir string `yaml:"base_dir" json:"base_dir"` // empty = default (~/.tlaude-code/memory/)
+}
+
+// SwarmConfig holds swarm/teams system configuration.
+type SwarmConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	TeamsDir       string `yaml:"teams_dir" json:"teams_dir"`             // empty = default (~/.tlaude-code/teams/)
+	MaxTeammates   int    `yaml:"max_teammates" json:"max_teammates"`     // max concurrent teammates per team
+	DefaultModel   string `yaml:"default_model" json:"default_model"`     // default model for teammates
+	PollIntervalMs int    `yaml:"poll_interval_ms" json:"poll_interval_ms"` // mailbox poll interval
 }
 
 // DefaultConfig 返回默认配置
@@ -193,6 +205,13 @@ func DefaultConfig() *Config {
 		Memory: MemoryConfig{
 			Enabled: true,
 			BaseDir: "",
+		},
+		Swarm: SwarmConfig{
+			Enabled:        true,
+			TeamsDir:       "",
+			MaxTeammates:   8,
+			DefaultModel:   "",
+			PollIntervalMs: 2000,
 		},
 		Agent: AgentConfig{
 			DefaultAgent: "general",
