@@ -126,6 +126,16 @@ type Config struct {
 
 	// Agent system (Phase 2).
 	Agent AgentConfig `yaml:"agent" json:"agent"`
+
+	// Context compaction.
+	Compact CompactConfig `yaml:"compact" json:"compact"`
+}
+
+// CompactConfig holds context compaction settings.
+type CompactConfig struct {
+	Enabled     bool `yaml:"enabled" json:"enabled"`
+	AutoCompact bool `yaml:"auto_compact" json:"auto_compact"`
+	TokenBudget int  `yaml:"token_budget" json:"token_budget"`
 }
 
 // DefaultConfig 返回默认配置
@@ -165,6 +175,11 @@ func DefaultConfig() *Config {
 			Dir:      filepath.Join(homeDir, ".tlaude-code", "plugins"),
 			Enabled:  []string{},
 			Disabled: []string{},
+		},
+		Compact: CompactConfig{
+			Enabled:     true,
+			AutoCompact: true,
+			TokenBudget: 40000,
 		},
 		Agent: AgentConfig{
 			DefaultAgent: "general",

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/tetexu/tlaude-code/internal/agent"
+	"github.com/tetexu/tlaude-code/internal/compact"
 	"github.com/tetexu/tlaude-code/internal/config"
 	"github.com/tetexu/tlaude-code/internal/cost"
 	"github.com/tetexu/tlaude-code/internal/llm"
@@ -135,13 +136,16 @@ type Model struct {
 	// Plugin system.
 	pluginManager *plugin.Manager
 
+	// Compact system.
+	compactManager *compact.Manager
+
 	// Context for cancellation.
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // NewModel creates a new TUI model.
-func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager) Model {
+func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Store, orchestrator *moa.Orchestrator, costTracker *cost.Tracker, costRouter *cost.Router, memSearch *memory.Searcher, mcpManager *mcp.Manager, agentStore *agent.AgentDefStore, agentRuntime *agent.AgentRuntime, toolReg *tool.Registry, taskManager *tool.TaskManager, planManager *plan.Manager, pluginManager *plugin.Manager, compactManager *compact.Manager) Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type your message... (Enter to send, Ctrl+C to quit)"
 	ta.ShowLineNumbers = false
@@ -188,8 +192,19 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 		taskManager:     taskManager,
 		planManager:     planManager,
 		pluginManager:   pluginManager,
+		compactManager:  compactManager,
 		ctx:             ctx,
 		cancel:          cancel,
+	}
+	if m.compactManager == nil {
+		compactCfg := compact.Config{
+			Enabled:          cfg.Compact.Enabled,
+			AutoCompact:      cfg.Compact.AutoCompact,
+			TokenBudget:      cfg.Compact.TokenBudget,
+			MaxSummaryTokens: 20000,
+			MaxPTLRetries:    3,
+		}
+		m.compactManager = compact.NewManager(compactCfg)
 	}
 	m.statusMsg = m.buildStatusMsg()
 	return m
@@ -698,6 +713,9 @@ func (m *Model) handleCommand(input string) tea.Cmd {
 		case strings.HasPrefix(input, "/plan "):
 			return m.handlePlanCommand(input)
 
+		case input == "/compact" || strings.HasPrefix(input, "/compact "):
+			return m.handleCompactCommand(input)
+
 		case input == "/plugins":
 			info := m.buildPluginStatus()
 			m.messages = append(m.messages, llm.Message{Role: "system", Content: info})
@@ -980,6 +998,76 @@ func (m *Model) handlePlanCommand(input string) tea.Cmd {
 		return m.rebuildChat()
 	}
 }
+
+	// handleCompactCommand processes /compact commands.
+	func (m *Model) handleCompactCommand(input string) tea.Cmd {
+		parts := strings.Fields(input)
+
+		if len(parts) == 1 || (len(parts) == 2 && parts[1] == "status") {
+			info := m.buildCompactStatus()
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: info})
+			return m.rebuildChat()
+		}
+
+		sub := strings.ToLower(parts[1])
+		switch sub {
+		case "auto":
+			if m.compactManager == nil {
+				m.messages = append(m.messages, llm.Message{Role: "system", Content: "Compact manager not available."})
+				return m.rebuildChat()
+			}
+			cfg := m.compactManager.Config()
+			cfg.AutoCompact = !cfg.AutoCompact
+			m.compactManager.SetConfig(cfg)
+			m.cfg.Compact.AutoCompact = cfg.AutoCompact
+			state := "disabled"
+			if cfg.AutoCompact {
+				state = "enabled"
+			}
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: fmt.Sprintf("Auto-compact %s.", state)})
+			m.statusMsg = m.buildStatusMsg()
+			return m.rebuildChat()
+		default:
+			m.messages = append(m.messages, llm.Message{Role: "system", Content: "Usage: /compact [status|auto]"})
+			return m.rebuildChat()
+		}
+	}
+
+	// buildCompactStatus formats compact state for display.
+	func (m *Model) buildCompactStatus() string {
+		if m.compactManager == nil {
+			return "Compact system not available."
+		}
+		cfg := m.compactManager.Config()
+		state := compact.CalculateTokenState(m.messages, m.cfg.Model, cfg.MaxSummaryTokens)
+		autoState := m.compactManager.AutoState()
+
+		var sb strings.Builder
+		sb.WriteString("Compact System Status:\n\n")
+		sb.WriteString(fmt.Sprintf("  Enabled:       %v\n", cfg.Enabled))
+		sb.WriteString(fmt.Sprintf("  Auto-compact:  %v\n", cfg.AutoCompact))
+		sb.WriteString(fmt.Sprintf("  Token Budget:  %d\n", cfg.TokenBudget))
+		sb.WriteString(fmt.Sprintf("  Est. Tokens:   %d\n", compact.EstimateTokens(m.messages)))
+		sb.WriteString(fmt.Sprintf("  Tokens Left:   %d%%\n", state.PercentLeft))
+		if state.IsAtBlockingLimit {
+			sb.WriteString("  Status:        AT BLOCKING LIMIT\n")
+		} else if state.IsAboveError {
+			sb.WriteString("  Status:        Above error threshold\n")
+		} else if state.IsAboveWarning {
+			sb.WriteString("  Status:        Above warning threshold\n")
+		} else if state.IsAboveAutoCompact {
+			sb.WriteString("  Status:        Above auto-compact threshold\n")
+		} else {
+			sb.WriteString("  Status:        Normal\n")
+		}
+		if autoState.Compacted {
+			sb.WriteString(fmt.Sprintf("  Last Compact:  turn %d\n", autoState.TurnCounter))
+		}
+		if autoState.ConsecutiveFailures > 0 {
+			sb.WriteString(fmt.Sprintf("  Failures:      %d\n", autoState.ConsecutiveFailures))
+		}
+		return sb.String()
+	}
 
 // buildPluginStatus formats the plugin system status for display.
 func (m *Model) buildPluginStatus() string {

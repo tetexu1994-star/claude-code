@@ -17,12 +17,13 @@ import (
 
 // Session represents a persisted chat session.
 type Session struct {
-	ID        string       `json:"id"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	Messages  []llm.Message `json:"messages"`
-	Provider  string       `json:"provider"`
-	Model     string       `json:"model"`
+	ID               string        `json:"id"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+	Messages         []llm.Message `json:"messages"`
+	Provider         string        `json:"provider"`
+	Model            string        `json:"model"`
+	CompactBoundary  string        `json:"compact_boundary,omitempty"`
 }
 
 // Store manages session persistence in ~/.tlaude-code/sessions/.

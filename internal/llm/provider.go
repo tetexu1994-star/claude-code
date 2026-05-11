@@ -48,6 +48,12 @@ type ChatResponse struct {
 	OutputTokens int     `json:"output_tokens"`
 }
 
+// Usage tracks token consumption for a single API call.
+type Usage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
 // Chunk 流式响应片段
 type Chunk struct {
 	Content   string     `json:"content"`
