@@ -135,6 +135,22 @@ type Config struct {
 
 	// Swarm/Teams system.
 	Swarm SwarmConfig `yaml:"swarm" json:"swarm"`
+
+	// LSP integration.
+	LSP LSPConfig `yaml:"lsp" json:"lsp"`
+}
+
+// LSPConfig holds LSP integration settings.
+type LSPConfig struct {
+	Enabled bool                       `yaml:"enabled" json:"enabled"`
+	Servers map[string]LSPServerConfig `yaml:"servers" json:"servers"`
+}
+
+// LSPServerConfig describes how to launch an LSP server.
+type LSPServerConfig struct {
+	Command             string            `yaml:"command" json:"command"`
+	Args                []string          `yaml:"args,omitempty" json:"args,omitempty"`
+	ExtensionToLanguage map[string]string `yaml:"extension_to_language" json:"extension_to_language"`
 }
 
 // CompactConfig holds context compaction settings.
@@ -212,6 +228,10 @@ func DefaultConfig() *Config {
 			MaxTeammates:   8,
 			DefaultModel:   "",
 			PollIntervalMs: 2000,
+		},
+		LSP: LSPConfig{
+			Enabled: false,
+			Servers: make(map[string]LSPServerConfig),
 		},
 		Agent: AgentConfig{
 			DefaultAgent: "general",
