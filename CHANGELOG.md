@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-11
+
+### Added
+- **CC-Source Agent System Prompts** — All 5 built-in agents now use CC-source-accurate system prompts
+  - GeneralPurpose: task-oriented with research strengths (ported from agent_generalPurpose.ts)
+  - Explore: READ-ONLY search specialist with parallel search guidance (ported from agent_explore.ts)
+  - Plan: Software architect with 4-step planning process + critical files output (ported from agent_planAgent.ts)
+  - Verification: NEW adversarial testing agent with strategy matrix, anti-rationalization checks, strict PASS/FAIL/PARTIAL output format (ported from agent_verification.ts, 152 lines)
+  - Guide: Tlaude Code usage reference agent
+- **Agent Definition Loading System** — Ported CC's loadAgentsDir.ts (755 lines) + agentMemory.ts (177 lines)
+  - Markdown frontmatter parser: define agents via agents/*.md files
+  - JSON agent parser: define agents programmatically
+  - Directory scanner + priority-based merge + memoized cache
+  - MemDir integration: scope-specific persistent memory (user/project/local)
+- **Fork Subagent System** — Enhanced with full CC-source-accurate fork logic
+  - BuildForkedMessages: prompt cache sharing via placeholder tool_results
+  - IsInForkChild: recursive fork detection
+  - BuildChildMessage: 10 strict fork rules + structured output format
+  - BuildWorktreeNotice: isolated git worktree path translation
+- **Coordinator Mode** — New internal/coordinator/ package (ported from coordinatorMode.ts, 369 lines)
+  - Feature gate via TLAUDE_CODE_COORDINATOR_MODE environment variable
+  - Session mode matching for resume compatibility
+  - Worker tool configuration (simple/full mode)
+  - Full coordinator system prompt: Research → Synthesis → Implementation → Verification workflow
+  - Continue vs Spawn decision matrix
+  - Worker prompt quality guidelines ("always synthesize — your most important job")
+- **TUI Enhancement** — Welcome screen, coordinator panel, markdown rendering
+  - Welcome screen: version banner + 8 quick-start tips, centered layout
+  - Coordinator panel: sub-agent status list with color-coded states
+  - Markdown rendering: headers (h1/h2/h3), code blocks, inline code, bold, lists
+  - Enhanced status bar: model:provider | mode | tokens | cost display
+  - Spinner: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" frame animation during streaming
+- **Memory/MemDir Persistence** — Full CC-source port (6 files)
+  - 4-type memory taxonomy: session, conversation, project, global
+  - 3-scope agent memory: user (~/.tlaude-code/agent-memory/), project, local
+  - File-based knowledge base with MEMORY.md index
+  - Auto-compaction with threshold triggers
+- **Swarm/Teams System** — Multi-agent team orchestration (5 files)
+  - InProcessBackend: teammates share AgentRuntime
+  - Mailbox-based message passing (Send/Receive with timeout)
+  - Permission-aware tool delegation
+  - Bridge pattern avoids circular imports
+- **LSP Integration** — JSON-RPC LSP client (2 files)
+  - Transport interface (stdio, extensible)
+  - Client: request/response routing + async response handling
+  - ServerManager: process lifecycle (spawn, health-check, shutdown)
+  - Used for IDE integration (future)
+
+### Changed
+- CC source coverage: 46/100 → 72/100 files ported
+- README.md updated with new feature documentation
+- Example agent definitions added (agents/researcher.md, agents/tester.md)
+- All system prompts reference Tlaude Code (not Claude Code)
+
+### Infrastructure
+- 26 Go packages, all -race clean (go test -race ./...)
+- 1,625+ lines of new code across this release cycle
+
 ## [2.0.0] - 2026-05-10
 
 ### Added
@@ -138,3 +196,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token estimation with CJK character support
 - Print mode for non-interactive pipe usage
 - README with quick start and configuration guide
+
+[2.2.0]: https://github.com/tetexu1994-star/claude-code/compare/v2.0.0...v2.2.0
