@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tetexu/tlaude-code/internal/agent/definition"
 	"gopkg.in/yaml.v3"
 )
 
@@ -50,6 +51,64 @@ func (s *AgentDefStore) Register(def *AgentDefinition) {
 		}
 		s.userDefs[def.AgentType] = def
 	}
+}
+
+// RegisterAgents converts and registers multiple definition.AgentDefinition instances.
+// This is the bridge between the definition package loader and the agent store.
+func (s *AgentDefStore) RegisterAgents(defs []*definition.AgentDefinition) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, d := range defs {
+		ad := convertDef(d)
+		switch ad.Source {
+		case "built-in":
+			s.builtIns[ad.AgentType] = ad
+		case "plugin":
+			s.plugins[ad.AgentType] = ad
+		default:
+			s.userDefs[ad.AgentType] = ad
+		}
+	}
+}
+
+// convertDef converts a definition.AgentDefinition to an agent.AgentDefinition.
+func convertDef(d *definition.AgentDefinition) *AgentDefinition {
+	out := &AgentDefinition{
+		AgentType:       d.AgentType,
+		Name:            d.Name,
+		Description:     d.Description,
+		WhenToUse:       d.WhenToUse,
+		Tools:           d.Tools,
+		DisallowedTools: d.DisallowedTools,
+		Skills:          d.Skills,
+		Color:           d.Color,
+		Model:           d.Model,
+		Source:          string(d.Source),
+		Background:      d.Background,
+		Isolation:       d.Isolation,
+		SystemPrompt:    d.SystemPrompt,
+		Filename:        d.Filename,
+	}
+
+	if out.Source == "" {
+		out.Source = "user"
+	}
+
+	if d.MaxTurns != nil {
+		out.MaxTurns = *d.MaxTurns
+	} else {
+		out.MaxTurns = 200
+	}
+
+	if d.PermissionMode != nil {
+		out.PermissionMode = *d.PermissionMode
+	}
+
+	if d.Memory != nil {
+		out.Memory = string(*d.Memory)
+	}
+
+	return out
 }
 
 // Get retrieves an agent definition by type name.
