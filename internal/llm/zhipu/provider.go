@@ -50,33 +50,94 @@ func (p *Provider) IsAvailable() bool {
 
 // openAIRequest OpenAI 兼容请求体
 type openAIRequest struct {
-	Model       string              `json:"model"`
-	Messages    []llm.Message       `json:"messages"`
-	Temperature float64             `json:"temperature,omitempty"`
-	MaxTokens   int                 `json:"max_tokens,omitempty"`
-	TopP        float64             `json:"top_p,omitempty"`
-	Stream      bool                `json:"stream"`
-	Tools       []llm.ToolDefinition `json:"tools,omitempty"`
+	Model       string        `json:"model"`
+	Messages    []llm.Message `json:"messages"`
+	Temperature float64       `json:"temperature,omitempty"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
+	TopP        float64       `json:"top_p,omitempty"`
+	Stream      bool          `json:"stream"`
+	Tools       []openAITool  `json:"tools,omitempty"`
 }
 
-// openAIResponse OpenAI 兼容响应体
+// openAITool wraps tools in OpenAI-compatible format with type: "function".
+type openAITool struct {
+	Type     string         `json:"type"` // "function"
+	Function openAIToolFunc `json:"function"`
+}
+
+type openAIToolFunc struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters"`
+	Arguments   string                 `json:"arguments,omitempty"`
+}
+
+// ---- Response types (match OpenAI format exactly) ----
+
 type openAIResponse struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Model   string `json:"model"`
-	Choices []struct {
-		Index        int         `json:"index"`
-		Message      llm.Message `json:"message"`
-		FinishReason string      `json:"finish_reason"`
-	} `json:"choices"`
-	Usage struct {
+	ID      string          `json:"id"`
+	Object  string          `json:"object"`
+	Model   string          `json:"model"`
+	Choices []openAIChoice  `json:"choices"`
+	Usage   struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
 }
 
+type openAIChoice struct {
+	Index        int           `json:"index"`
+	Message      openAIMessage `json:"message"`
+	FinishReason string        `json:"finish_reason"`
+}
+
+// openAIMessage 匹配 OpenAI 的消息格式（tool_calls 的 name 在 function 内）
+type openAIMessage struct {
+	Role      string           `json:"role"`
+	Content   *string          `json:"content"`
+	ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
+}
+
+type openAIToolCall struct {
+	ID       string         `json:"id"`
+	Type     string         `json:"type"`
+	Function openAIToolFunc `json:"function"`
+}
+
+// toLLMMessage converts openAIMessage → llm.Message, mapping
+// OpenAI's nested function.name → llm.ToolCall.Name.
+func (m openAIMessage) toLLMMessage() llm.Message {
+	msg := llm.Message{Role: m.Role}
+	if m.Content != nil {
+		msg.Content = *m.Content
+	}
+	for _, tc := range m.ToolCalls {
+		var args map[string]interface{}
+		if tc.Function.Arguments != "" {
+			json.Unmarshal([]byte(tc.Function.Arguments), &args)
+		}
+		msg.ToolCalls = append(msg.ToolCalls, llm.ToolCall{
+			ID:   tc.ID,
+			Name: tc.Function.Name,
+			Args: args,
+		})
+	}
+	return msg
+}
+
 func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	var apiTools []openAITool
+	for _, t := range req.Tools {
+		apiTools = append(apiTools, openAITool{
+			Type: "function",
+			Function: openAIToolFunc{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.InputSchema,
+			},
+		})
+	}
 	apiReq := openAIRequest{
 		Model:       req.Model,
 		Messages:    req.Messages,
@@ -84,7 +145,7 @@ func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResp
 		MaxTokens:   req.MaxTokens,
 		TopP:        req.TopP,
 		Stream:      false,
-		Tools:       req.Tools,
+		Tools:       apiTools,
 	}
 
 	body, err := json.Marshal(apiReq)
@@ -120,7 +181,7 @@ func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResp
 
 	var msg llm.Message
 	if len(apiResp.Choices) > 0 {
-		msg = apiResp.Choices[0].Message
+		msg = apiResp.Choices[0].Message.toLLMMessage()
 	}
 	if msg.Role == "" {
 		msg.Role = "assistant"

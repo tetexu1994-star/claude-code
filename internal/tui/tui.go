@@ -32,63 +32,60 @@ import (
 
 var (
 	chatStyle = lipgloss.NewStyle().
-			PaddingLeft(1)
+		PaddingLeft(1)
 
 	statusBarStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#27272A")).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Padding(0, 1)
+		Padding(0, 1).
+		Foreground(lipgloss.Color("#FFFFFF"))
 
 	userMsgStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#22D3EE"))
+		Bold(true).
+		Foreground(lipgloss.Color("#22D3EE"))
 
-	assistantMsgStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#A78BFA"))
+	assistantMsgStyle = lipgloss.NewStyle()
 
 	systemMsgStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#A1A1AA"))
+		Foreground(lipgloss.Color("#A1A1AA"))
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#EF4444"))
+		Foreground(lipgloss.Color("#EF4444"))
 
 	codeBlockStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#27272A")).
-			Padding(0, 1).
-			MarginLeft(2)
+		Padding(0, 1).
+		MarginLeft(2).
+		Foreground(lipgloss.Color("#FBBF24"))
 
 	codeHeaderStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#A1A1AA")).
-			MarginLeft(2)
+		MarginLeft(2).
+		Foreground(lipgloss.Color("#FBBF24"))
 
 	moaDetailStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#A1A1AA"))
+		Foreground(lipgloss.Color("#8B5CF6"))
+
 	// Welcome screen styles.
 	welcomeContainerStyle = lipgloss.NewStyle().
 		Width(60).
 		Padding(2, 3).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#A78BFA"))
+		Border(lipgloss.RoundedBorder())
 
 	welcomeTitleStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#A78BFA"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	welcomeTipStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#D4D4D8"))
+		Foreground(lipgloss.Color("#A1A1AA"))
 
 	welcomeKeyStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#22D3EE"))
+		Foreground(lipgloss.Color("#FFFFFF"))
 
 	// Coordinator panel styles.
 	coordinatorBoxStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#A78BFA")).
 		Padding(0, 1)
 
 	coordinatorHeaderStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#A78BFA"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	coordinatorRunningStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#22D3EE"))
@@ -102,18 +99,18 @@ var (
 	// Markdown rendering styles.
 	mdH1Style = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#A78BFA"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	mdH2Style = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#818CF8"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	mdH3Style = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#60A5FA"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	mdInlineCodeStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#27272A")).
+		Padding(0, 1).
 		Foreground(lipgloss.Color("#FBBF24"))
 
 	mdBoldStyle = lipgloss.NewStyle().
@@ -121,20 +118,18 @@ var (
 
 	// Enhanced status bar styles.
 	statusBarEnhancedStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#27272A")).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Padding(0, 1)
+		Padding(0, 1).
+		Foreground(lipgloss.Color("#A1A1AA"))
 
 	statusBarSepStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#27272A")).
-		Foreground(lipgloss.Color("#71717A"))
+		Foreground(lipgloss.Color("#52525B"))
 
 	// Spinner style.
 	spinnerFrameStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#A78BFA"))
+		Foreground(lipgloss.Color("#22D3EE"))
 
 	spinnerTextStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#D4D4D8"))
+		Foreground(lipgloss.Color("#A1A1AA"))
 )
 
 // Version is the package version, set at build time or defaulting to "dev".
@@ -267,6 +262,8 @@ func NewModel(cfg *config.Config, provider llm.Provider, sessStore *session.Stor
 	ta.CharLimit = 32000
 
 	vp := viewport.New(80, 20)
+	// Pre-fill viewport with welcome header so first frame shows it immediately.
+	vp.SetContent(Model{welcomeVisible: true}.welcomeHeader())
 
 	moaEnabled := cfg.MoA.Enabled && orchestrator != nil
 	smartRouting := cfg.SmartRouting
@@ -337,8 +334,6 @@ func (m Model) Init() tea.Cmd {
 		tea.EnterAltScreen,
 	)
 }
-
-// Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -352,19 +347,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatView.Width = max(msg.Width-2, 10)
 		m.chatView.Height = max(msg.Height-7, 3)
 
-
+		// Always rebuild chat to set viewport content (includes welcome header).
 		cmds = append(cmds, m.rebuildChat())
 
 	case tea.KeyMsg:
-		// Dismiss welcome screen on any key press.
+		// Forward keystrokes to textarea even during welcome screen.
+		// Welcome screen is dismissed on Enter (message send), not on arbitrary keys.
 		if m.welcomeVisible {
-			m.welcomeVisible = false
 			if msg.String() == "ctrl+c" || msg.String() == "esc" {
 				m.quitting = true
 				m.cancel()
 				return m, tea.Quit
 			}
-			return m, nil
+			if msg.String() == "enter" {
+				input := strings.TrimSpace(m.input.Value())
+				if input == "" {
+					break
+				}
+				// Don't dismiss welcome; it stays as the viewport header.
+				if strings.HasPrefix(input, "/") {
+					cmds = append(cmds, m.handleCommand(input))
+				} else {
+					cmds = append(cmds, m.sendMessage(input))
+				}
+				cmds = append(cmds, m.rebuildChat())
+				break
+			}
+			// Forward to textarea so user can type in the visible input box.
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(msg)
+			return m, cmd
 		}
 
 		switch msg.String() {
@@ -507,11 +519,7 @@ func (m Model) View() string {
 		return m.renderHelp()
 	}
 
-	// Welcome screen: shown before any messages are exchanged.
-	if m.showWelcome() && !m.streaming {
-		return m.welcomeView()
-	}
-
+	// Welcome content is included in the viewport via rebuildChat() — no early return.
 	chatContent := m.chatView.View()
 
 	// Coordinator panel above chat.
@@ -528,7 +536,7 @@ func (m Model) View() string {
 	inputStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#A78BFA")).
-		Width(max(m.width-2, 10))
+		Width(max(m.width-4, 10))
 	inputView := inputStyle.Render(m.input.View())
 
 	statusBar := m.renderStatusBarEnhanced()
@@ -545,12 +553,13 @@ func (m Model) View() string {
 		chatContent = chatContent + "\n" + approvalBar
 	}
 
-	return chatStyle.Render(lipgloss.JoinVertical(
+	// Apply chatStyle padding to chatContent only, not to input/statusBar.
+	return lipgloss.JoinVertical(
 		lipgloss.Top,
-		chatContent,
+		chatStyle.Render(chatContent),
 		inputView,
 		statusBar,
-	))
+	)
 }
 
 type streamChunkMsg struct {
@@ -1561,8 +1570,53 @@ func (m *Model) buildStatusMsg() string {
 	return msg
 }
 
+// welcomeHeader returns the welcome info text without input box / status bar.
+func (m Model) welcomeHeader() string {
+	var sb strings.Builder
+	sb.WriteString("Tlaude Code v" + Version + "\n\n")
+	if m.cfg != nil {
+		sb.WriteString("Provider: " + m.cfg.Provider + "  Model: " + m.cfg.Model + "\n")
+	}
+	if m.agentStore != nil {
+		sb.WriteString(fmt.Sprintf("Agents: %d built-in, %d total", m.agentStore.CountBuiltIn(), m.agentStore.Count()))
+		if m.moaEnabled {
+			sb.WriteString("  |  MoA: enabled")
+		}
+		sb.WriteString("\n")
+	}
+	if m.planManager != nil || m.mcpManager != nil || m.pluginManager != nil || m.memorySearch != nil {
+		sb.WriteString("Features: ")
+		features := make([]string, 0)
+		if m.planManager != nil { features = append(features, "Plan") }
+		if m.mcpManager != nil { features = append(features, "MCP") }
+		if m.pluginManager != nil { features = append(features, "Plugin(Lua)") }
+		if m.memorySearch != nil { features = append(features, "Memory") }
+		if m.compactManager != nil { features = append(features, "Compact") }
+		if m.swarmStore != nil { features = append(features, "Swarm") }
+		sb.WriteString(strings.Join(features, ", "))
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n")
+	sb.WriteString("/help                 Show available commands\n")
+	sb.WriteString("/agent list           List/switch agents\n")
+	sb.WriteString("/plan create          Create a new plan\n")
+	sb.WriteString("/clear                Clear chat\n")
+	sb.WriteString("/save                 Save session\n")
+	sb.WriteString("/welcome              Show welcome screen\n")
+	sb.WriteString("Ctrl+C                Exit\n")
+	sb.WriteString("\n")
+	sb.WriteString("Type a message or command to begin...\n")
+	return sb.String()
+}
+
 func (m *Model) rebuildChat() tea.Cmd {
 	var sb strings.Builder
+
+	// Prepend welcome header only when there are no messages yet.
+	if m.welcomeVisible && len(m.messages) == 0 {
+		sb.WriteString(m.welcomeHeader())
+		sb.WriteString("\n")
+	}
 
 	for _, msg := range m.messages {
 		switch msg.Role {
@@ -1571,7 +1625,7 @@ func (m *Model) rebuildChat() tea.Cmd {
 			sb.WriteString(msg.Content)
 		case "assistant":
 			sb.WriteString(assistantMsgStyle.Render("Assistant: "))
-			sb.WriteString(renderContent(msg.Content))
+			sb.WriteString(renderContent(msg.Content, m.chatView.Width))
 		case "system":
 			sb.WriteString(systemMsgStyle.Render("[") + msg.Content + systemMsgStyle.Render("]"))
 		}
@@ -1580,7 +1634,7 @@ func (m *Model) rebuildChat() tea.Cmd {
 
 	if m.streaming && m.streamBuf.Len() > 0 {
 		sb.WriteString(assistantMsgStyle.Render("Assistant: "))
-		sb.WriteString(renderContent(m.streamBuf.String()))
+		sb.WriteString(renderContent(m.streamBuf.String(), m.chatView.Width))
 		sb.WriteString("█\n")
 	}
 
@@ -1600,7 +1654,7 @@ func (m *Model) rebuildChat() tea.Cmd {
 	return viewport.Sync(m.chatView)
 }
 
-func renderContent(content string) string {
+func renderContent(content string, width int) string {
 	var sb strings.Builder
 	inCode := false
 
@@ -1619,6 +1673,10 @@ func renderContent(content string) string {
 		}
 		if inCode {
 			sb.WriteString(codeBlockStyle.Render(line))
+		} else if width > 0 {
+			// Wrap long lines to fit viewport width.
+			wrapped := lipgloss.NewStyle().Width(width).Render(line)
+			sb.WriteString(wrapped)
 		} else {
 			sb.WriteString(line)
 		}
@@ -1996,42 +2054,22 @@ func (m Model) showWelcome() bool {
 func (m Model) welcomeView() string {
 	var sb strings.Builder
 
-	// Title line.
-	sb.WriteString(welcomeTitleStyle.Render("Tlaude Code"))
-	sb.WriteString("  ")
-	sb.WriteString(welcomeTipStyle.Render("v" + Version))
-	sb.WriteString("\n\n")
+	sb.WriteString("Tlaude Code v" + Version + "\n\n")
 
-	// Provider & model info.
 	if m.cfg != nil {
-		sb.WriteString(welcomeKeyStyle.Render("Provider:"))
-		sb.WriteString("  ")
-		sb.WriteString(welcomeTipStyle.Render(m.cfg.Provider))
-		sb.WriteString("  ")
-		sb.WriteString(welcomeKeyStyle.Render("Model:"))
-		sb.WriteString("  ")
-		sb.WriteString(welcomeTipStyle.Render(m.cfg.Model))
-		sb.WriteString("\n")
+		sb.WriteString("Provider: " + m.cfg.Provider + "  Model: " + m.cfg.Model + "\n")
 	}
 
-	// Agent info.
 	if m.agentStore != nil {
-		sb.WriteString(welcomeKeyStyle.Render("Agents:"))
-		sb.WriteString("  ")
-		sb.WriteString(welcomeTipStyle.Render(fmt.Sprintf("%d built-in, %d total", m.agentStore.CountBuiltIn(), m.agentStore.Count())))
+		sb.WriteString(fmt.Sprintf("Agents: %d built-in, %d total", m.agentStore.CountBuiltIn(), m.agentStore.Count()))
 		if m.moaEnabled {
-			sb.WriteString("  |  ")
-			sb.WriteString(welcomeKeyStyle.Render("MoA:"))
-			sb.WriteString("  ")
-			sb.WriteString(welcomeTipStyle.Render("enabled"))
+			sb.WriteString("  |  MoA: enabled")
 		}
 		sb.WriteString("\n")
 	}
 
-	// Features.
 	if m.planManager != nil || m.mcpManager != nil || m.pluginManager != nil || m.memorySearch != nil {
-		sb.WriteString(welcomeKeyStyle.Render("Features:"))
-		sb.WriteString("  ")
+		sb.WriteString("Features: ")
 		features := make([]string, 0)
 		if m.planManager != nil {
 			features = append(features, "Plan")
@@ -2051,57 +2089,32 @@ func (m Model) welcomeView() string {
 		if m.swarmStore != nil {
 			features = append(features, "Swarm")
 		}
-		sb.WriteString(welcomeTipStyle.Render(strings.Join(features, ", ")))
+		sb.WriteString(strings.Join(features, ", "))
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")
-
-	// Commands.
-	tips := []struct {
-		key, desc string
-	}{
-		{"/help", "Show available commands"},
-		{"/agent list", "List/switch agents"},
-		{"/plan create", "Create a new plan"},
-		{"/clear", "Clear chat"},
-		{"/save", "Save session"},
-		{"/welcome", "Show welcome screen"},
-		{"Ctrl+C", "Exit"},
-	}
-
-	for _, tip := range tips {
-		sb.WriteString("  ")
-		sb.WriteString(welcomeKeyStyle.Render(tip.key))
-		sb.WriteString(strings.Repeat(" ", max(14-len(tip.key), 2)))
-		sb.WriteString(welcomeTipStyle.Render(tip.desc))
-		sb.WriteString("\n")
-	}
+	sb.WriteString("/help                 Show available commands\n")
+	sb.WriteString("/agent list           List/switch agents\n")
+	sb.WriteString("/plan create          Create a new plan\n")
+	sb.WriteString("/clear                Clear chat\n")
+	sb.WriteString("/save                 Save session\n")
+	sb.WriteString("/welcome              Show welcome screen\n")
+	sb.WriteString("Ctrl+C                Exit\n")
 
 	sb.WriteString("\n")
-	sb.WriteString(welcomeTipStyle.Render("Type a message or command to begin..."))
+	sb.WriteString("Type a message or command to begin...\n\n")
 
-	// Input box.
-	var inputView string
-	func() {
-		defer func() { recover() }()
-		inputStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#A78BFA")).
-			Width(max(m.width-2, 10))
-		inputView = inputStyle.Render(m.input.View())
-	}()
+	// Render input box and status bar below welcome content.
+	inputStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Width(max(m.width-2, 10))
+	inputView := inputStyle.Render(m.input.View())
 
-	// Status bar.
 	statusBar := m.renderStatusBarEnhanced()
 
-	return chatStyle.Render(lipgloss.JoinVertical(
-		lipgloss.Top,
-		sb.String(),
-		"",
-		inputView,
-		statusBar,
-	))
+	result := sb.String() + "\n" + inputView + "\n" + statusBar
+	return result
 }
 
 // ---------------------------------------------------------------------------
